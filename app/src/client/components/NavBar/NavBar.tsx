@@ -104,7 +104,17 @@ function NavBarDesktopUserDropdown() {
           </div>
         </WaspRouterLink>
       ) : (
-        <UserDropdown user={user} />
+        <>
+          <WaspRouterLink
+            to={routes.AppRoute.to}
+            className="hidden sm:block"
+          >
+            <div className="bg-white text-black border-2 border-black px-4 py-2 font-black text-sm uppercase tracking-widest shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all">
+              Dashboard
+            </div>
+          </WaspRouterLink>
+          <UserDropdown user={user} />
+        </>
       )}
     </div>
   );
@@ -154,7 +164,15 @@ function NavBarMobileMenu({
                     </div>
                   </WaspRouterLink>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="space-y-4">
+                    <WaspRouterLink
+                      to={routes.AppRoute.to}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <div className="bg-primary text-black border-2 border-black p-4 font-black text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none uppercase tracking-widest text-sm mb-4">
+                        Go to Dashboard
+                      </div>
+                    </WaspRouterLink>
                     <UserMenuItems
                       user={user}
                       onItemClick={() => setMobileMenuOpen(false)}

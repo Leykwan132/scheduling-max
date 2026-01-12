@@ -22,45 +22,53 @@ model User {
   datePaid                      DateTime?
   credits                       Int       @default(3)
 
-  gptResponses        GptResponse[]
+  // User Profile Fields
+  profileImageFileId String? @unique
+  profileImageFile   File?   @relation("ProfileImage", fields: [profileImageFileId], references: [id])
+  slug               String? @unique
+  bio                String?
+  position           String? // e.g., "Senior Barber"
+
+  // Operation Hours
+  openingTime String? // e.g., "09:00"
+  closingTime String? // e.g., "17:00"
+  workDays    String? // Comma-separated days: "mon,tue,wed,thu,fri"
+
   contactFormMessages ContactFormMessage[]
-  tasks               Task[]
-  files               File[]
-}
+  files               File[]               @relation("UserFiles")
 
-model GptResponse {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // Relations
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id])
 
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
+  isBusinessOwner Boolean @default(false)
 
-  content String
-}
+  // Social & Public Contact
+  igUrl       String?
+  tiktokUrl   String?
+  facebookUrl String?
+  websiteUrl  String?
+  publicEmail String?
+  publicPhone String?
 
-model Task {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
-
-  description String
-  time        String  @default("1")
-  isDone      Boolean @default(false)
+  customers Customer[]
+  services  Service[]
+  bookings  Booking[]  @relation("StaffBookings")
 }
 
 model File {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation("UserFiles", fields: [userId], references: [id])
   userId String
 
   name  String
   type  String
   s3Key String
+
+  // Back-reference for profile image
+  profileImageUser User? @relation("ProfileImage")
 }
 
 model DailyStats {
@@ -109,4 +117,85 @@ model ContactFormMessage {
   content   String
   isRead    Boolean   @default(false)
   repliedAt DateTime?
+}
+
+model Business {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+
+  name     String
+  slug     String  @unique
+  imageUrl String?
+  logoUrl  String?
+  phone    String?
+
+  services  Service[]
+  customers Customer[]
+  bookings  Booking[]
+}
+
+model Service {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId String
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+
+  name        String
+  description String?
+  duration    Int // in minutes
+  price       Float
+  isActive    Boolean @default(true)
+
+  bookings Booking[]
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId String
+
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
+
+  name  String
+  phone String
+  email String?
+  notes String?
+
+  bookings Booking[]
+}
+
+model Booking {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId String
+
+  customer   Customer @relation(fields: [customerId], references: [id])
+  customerId String
+
+  service   Service @relation(fields: [serviceId], references: [id])
+  serviceId String
+
+  staff   User   @relation("StaffBookings", fields: [staffId], references: [id])
+  staffId String
+
+  date      DateTime
+  startTime String // "09:00" format
+  duration  Int // in minutes
+  status    String   @default("confirmed") // confirmed, pending, cancelled
+  notes     String?
+  price     Float
 }

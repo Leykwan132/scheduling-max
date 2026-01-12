@@ -68,7 +68,7 @@ app OpenSaaS {
       // }
     },
     onAuthFailedRedirectTo: "/login",
-    onAuthSucceededRedirectTo: "/demo-app",
+    onAuthSucceededRedirectTo: "/app",
   },
 
   db: {
@@ -76,6 +76,8 @@ app OpenSaaS {
     seeds: [
       // Populates the database with a bunch of fake users to work with during development.
       import { seedMockUsers } from "@src/server/scripts/dbSeeds",
+      import { seedServices } from "@src/server/scripts/dbSeeds",
+      import { seedBookingData } from "@src/server/scripts/dbSeeds",
     ]
   },
 
@@ -146,43 +148,163 @@ action updateIsUserAdminById {
 }
 //#endregion
 
-//#region Demo AI App
-route DemoAppRoute { path: "/demo-app", to: DemoAppPage }
-page DemoAppPage {
+//#region App Dashboard
+route AppRoute { path: "/app", to: DashboardPage }
+page DashboardPage {
   authRequired: true,
-  component: import DemoAppPage from "@src/demo-ai-app/DemoAppPage"
+  component: import DashboardPage from "@src/app/DashboardPage"
 }
 
-action generateGptResponse {
-  fn: import { generateGptResponse } from "@src/demo-ai-app/operations",
-  entities: [User, Task, GptResponse]
+route LinksRoute { path: "/app/links", to: LinksPage }
+page LinksPage {
+  authRequired: true,
+  component: import LinksPage from "@src/app/links/LinksPage"
 }
 
-action createTask {
-  fn: import { createTask } from "@src/demo-ai-app/operations",
-  entities: [Task]
+route SettingsRoute { path: "/app/settings", to: SettingsPage }
+page SettingsPage {
+  authRequired: true,
+  component: import SettingsPage from "@src/app/settings/SettingsPage"
 }
 
-action deleteTask {
-  fn: import { deleteTask } from "@src/demo-ai-app/operations",
-  entities: [Task]
+route CalendarRoute { path: "/app/calendar", to: CalendarPage }
+page CalendarPage {
+  authRequired: true,
+  component: import CalendarPage from "@src/app/calendar/CalendarPage"
 }
 
-action updateTask {
-  fn: import { updateTask } from "@src/demo-ai-app/operations",
-  entities: [Task]
+route BusinessSetupRoute { path: "/app/setup", to: BusinessSetupPage }
+page BusinessSetupPage {
+  authRequired: true,
+  component: import BusinessSetupPage from "@src/app/business/BusinessSetupPage"
 }
 
-query getGptResponses {
-  fn: import { getGptResponses } from "@src/demo-ai-app/operations",
-  entities: [User, GptResponse]
+route ClientsRoute { path: "/app/clients", to: ClientsPage }
+page ClientsPage {
+  authRequired: true,
+  component: import ClientsPage from "@src/app/clients/ClientsPage"
 }
 
-query getAllTasksByUser {
-  fn: import { getAllTasksByUser } from "@src/demo-ai-app/operations",
-  entities: [Task]
+route BookingsRoute { path: "/app/bookings", to: BookingsPage }
+page BookingsPage {
+  authRequired: true,
+  component: import BookingsPage from "@src/app/bookings/BookingsPage"
+}
+
+route PromosRoute { path: "/app/promos", to: PromosPage }
+page PromosPage {
+  authRequired: true,
+  component: import PromosPage from "@src/app/promos/PromosPage"
+}
+
+route FinancesRoute { path: "/app/finances", to: FinancesPage }
+page FinancesPage {
+  authRequired: true,
+  component: import FinancesPage from "@src/app/finances/FinancesPage"
+}
+
+route TeamRoute { path: "/app/team", to: TeamPage }
+page TeamPage {
+  authRequired: true,
+  component: import TeamPage from "@src/app/team/TeamPage"
+}
+
+route InsightsRoute { path: "/app/insights", to: InsightsPage }
+page InsightsPage {
+  authRequired: true,
+  component: import InsightsPage from "@src/app/insights/InsightsPage"
+}
+
+query getBusinessByUser {
+  fn: import { getBusinessByUser } from "@src/app/operations",
+  entities: [Business, User]
+}
+
+query getServicesByBusinessAndUserId {
+  fn: import { getServicesByBusinessAndUserId } from "@src/app/operations",
+  entities: [Service, Business]
+}
+
+action upsertBusiness {
+  fn: import { upsertBusiness } from "@src/app/operations",
+  entities: [Business, User]
+}
+
+action updateUserProfile {
+  fn: import { updateUserProfile } from "@src/app/operations",
+  entities: [User]
+}
+
+action updateUserProfileImage {
+  fn: import { updateUserProfileImage } from "@src/app/operations",
+  entities: [User, File]
+}
+
+action createService {
+  fn: import { createService } from "@src/app/operations",
+  entities: [Service, Business, User]
+}
+
+action updateService {
+  fn: import { updateService } from "@src/app/operations",
+  entities: [Service, User]
+}
+
+action deleteService {
+  fn: import { deleteService } from "@src/app/operations",
+  entities: [Service, User]
+}
+
+query getBookingsByBusiness {
+  fn: import { getBookingsByBusiness } from "@src/app/operations",
+  entities: [Booking, Business, Customer, Service, User]
+}
+
+
+query getCustomersByBusiness {
+  fn: import { getCustomersByBusiness } from "@src/app/operations",
+  entities: [Customer, Business, User]
+}
+
+action createBooking {
+  fn: import { createBooking } from "@src/app/operations",
+  entities: [Booking, Customer, Business, Service, User]
+}
+
+
+action updateBooking {
+  fn: import { updateBooking } from "@src/app/operations",
+  entities: [Booking, Customer, Service, Business, User]
+}
+
+action deleteBooking {
+  fn: import { deleteBooking } from "@src/app/operations",
+  entities: [Booking, Business, User]
 }
 //#endregion
+
+//#region Public Booking
+route BookingRoute { path: "/book/:slug", to: BookingPage }
+page BookingPage {
+  component: import BookingPage from "@src/booking/BookingPage"
+}
+
+query getUserBySlug {
+  fn: import { getUserBySlug } from "@src/booking/operations",
+  entities: [User, Business, Service]
+}
+
+query getAvailableSlots {
+  fn: import { getAvailableSlots } from "@src/booking/operations",
+  entities: [User, Booking]
+}
+
+action createPublicBooking {
+  fn: import { createPublicBooking } from "@src/booking/operations",
+  entities: [User, Business, Service, Customer, Booking]
+}
+//#endregion
+
 
 //#region Payment
 route PricingPageRoute { path: "/pricing", to: PricingPage }
