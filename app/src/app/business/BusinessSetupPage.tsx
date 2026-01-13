@@ -1,12 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
 import DashboardLayout from "../layout/DashboardLayout";
-import { Palette, Eye, Link2, Check, Package, Plus, Edit, Trash2, ArrowRight, User as UserIcon, ChevronDown, Search, Camera, Loader2 } from "lucide-react";
+import { Palette, Eye, Link2, Check, Package, Plus, Edit, Trash2, ArrowRight, User as UserIcon, ChevronDown, Search, Camera, Loader2, Clock, Copy, Calendar, Globe, Phone, Mail, Instagram, Facebook, X } from "lucide-react";
 import { useQuery, useAction } from "wasp/client/operations";
 import { useAuth } from "wasp/client/auth";
-import { getBusinessByUser, getServicesByBusinessAndUserId, upsertBusiness, updateUserProfile, createService, updateService, deleteService, createFileUploadUrl, addFileToDb, getDownloadFileSignedURL, updateUserProfileImage } from "wasp/client/operations";
+import { getBusinessByUser, getServicesByBusinessAndUserId, upsertBusiness, updateUserProfile, createService, updateService, deleteService, createFileUploadUrl, addFileToDb, getDownloadFileSignedURL, updateUserProfileImage, getSchedule, updateSchedule, updateScheduleOverride } from "wasp/client/operations";
 import { uploadFileWithProgress, validateFile } from "../../file-upload/fileUploading";
 import { cn } from "../../client/utils";
 import { ToastContainer, Toast } from "../../client/components/Toast";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/style.css";
+import { format } from "date-fns";
 
 // Helper function to format time from 24-hour to 12-hour format
 const formatTime = (time: string): string => {
@@ -113,10 +116,14 @@ const COUNTRY_CODES = [
 ].sort((a, b) => a.country.localeCompare(b.country));
 
 export default function BusinessSetupPage() {
+    const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
+    const [editingOverrideId, setEditingOverrideId] = useState<string | null>(null);
+
     const { data: user } = useAuth();
     // Queries
     const { data: business, refetch: refetchBusiness } = useQuery(getBusinessByUser);
     const { data: services, refetch: refetchServices } = useQuery(getServicesByBusinessAndUserId, business?.id ? { businessId: business.id, userId: user?.id } : undefined, { enabled: !!business?.id && !!user?.id });
+    const { data: schedule, refetch: refetchSchedule } = useQuery(getSchedule);
 
     // Actions
     const updateBusinessAction = useAction(upsertBusiness);
@@ -125,6 +132,8 @@ export default function BusinessSetupPage() {
     const updateServiceAction = useAction(updateService);
     const deleteServiceAction = useAction(deleteService);
     const updateUserProfileImageAction = useAction(updateUserProfileImage);
+    const updateScheduleAction = useAction(updateSchedule);
+    const updateScheduleOverrideAction = useAction(updateScheduleOverride);
 
     // Compute current user's profile image URL from business data
     const currentUserProfileImageUrl = useMemo(() => {
@@ -134,7 +143,7 @@ export default function BusinessSetupPage() {
     }, [business, user]);
 
     // State
-    const [activeTab, setActiveTab] = useState<'profile' | 'services'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'services' | 'availability'>('profile');
     const [copied, setCopied] = useState(false);
     const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' }>>([]);
     const [isSaving, setIsSaving] = useState(false);
@@ -143,6 +152,9 @@ export default function BusinessSetupPage() {
     const [countrySearchQuery, setCountrySearchQuery] = useState("");
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
+    const [isAddContactOpen, setIsAddContactOpen] = useState(false);
+    const [isTimezoneOpen, setIsTimezoneOpen] = useState(false);
+    const [timezoneSearchQuery, setTimezoneSearchQuery] = useState("");
 
     // Delete Modal State
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; serviceId: string | null; serviceName: string }>({
@@ -159,8 +171,20 @@ export default function BusinessSetupPage() {
         phone: "",
         openingTime: "09:00",
         closingTime: "17:00",
-        workDays: ["mon", "tue", "wed", "thu", "fri"] // Default work days
-        // profileImage: user?.profileImage || "" 
+        workDays: ["mon", "tue", "wed", "thu", "fri"], // Default work days
+        // specific contact fields
+        instagramUrl: "",
+        isInstagramEnabled: false,
+        tiktokUrl: "",
+        isTikTokEnabled: false,
+        facebookUrl: "",
+        isFacebookEnabled: false,
+        websiteUrl: "",
+        isWebsiteEnabled: false,
+        contactEmail: "",
+        isContactEmailEnabled: false,
+        isPhoneEnabled: true,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     });
 
     // Update form when user data loads
@@ -173,7 +197,8 @@ export default function BusinessSetupPage() {
                 bio: user.bio || "",
                 openingTime: user.openingTime || "09:00",
                 closingTime: user.closingTime || "17:00",
-                workDays: user.workDays ? user.workDays.split(',') : ["mon", "tue", "wed", "thu", "fri"]
+                workDays: user.workDays ? user.workDays.split(',') : ["mon", "tue", "wed", "thu", "fri"],
+                timezone: user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
             }));
         }
     }, [user]);
@@ -182,7 +207,18 @@ export default function BusinessSetupPage() {
         if (business) {
             setProfileForm(prev => ({
                 ...prev,
-                phone: business.phone || ""
+                phone: business.phone || "",
+                instagramUrl: business.instagramUrl || "",
+                isInstagramEnabled: !!business.instagramUrl && (business.isInstagramEnabled ?? false),
+                tiktokUrl: business.tiktokUrl || "",
+                isTikTokEnabled: !!business.tiktokUrl && (business.isTikTokEnabled ?? false),
+                facebookUrl: business.facebookUrl || "",
+                isFacebookEnabled: !!business.facebookUrl && (business.isFacebookEnabled ?? false),
+                websiteUrl: business.websiteUrl || "",
+                isWebsiteEnabled: !!business.websiteUrl && (business.isWebsiteEnabled ?? false),
+                contactEmail: business.contactEmail || "",
+                isContactEmailEnabled: !!business.contactEmail && (business.isContactEmailEnabled ?? false),
+                isPhoneEnabled: business.isPhoneEnabled ?? true
             }));
         }
     }, [business]);
@@ -197,6 +233,39 @@ export default function BusinessSetupPage() {
         description: "",
         isActive: true
     });
+
+    // Availability Schedule State
+    const [scheduleDays, setScheduleDays] = useState<{ dayOfWeek: string; startTime: string; endTime: string }[]>([]);
+    const [overrides, setOverrides] = useState<any[]>([]);
+    const [timezone, setTimezone] = useState("UTC");
+    const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+    const [overrideForm, setOverrideForm] = useState({ dates: [] as string[], isUnavailable: false, startTime: "09:00", endTime: "17:00" });
+    const [selectedDates, setSelectedDates] = useState<Date[] | undefined>([]);
+
+    // Track initial state for dirty checking
+    const [initialScheduleState, setInitialScheduleState] = useState<string>("");
+
+    useEffect(() => {
+        if (schedule) {
+            setScheduleDays(schedule.days || []);
+            setOverrides(schedule.overrides || []);
+            setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+
+            // Set initial state string for comparison
+            setInitialScheduleState(JSON.stringify({
+                days: schedule.days || []
+            }));
+        } else {
+            // Default if no schedule loaded yet
+            setScheduleDays([]);
+        }
+    }, [schedule]);
+
+    const isScheduleDirty = useMemo(() => {
+        if (!initialScheduleState) return false;
+        const currentState = JSON.stringify({ days: scheduleDays });
+        return currentState !== initialScheduleState;
+    }, [scheduleDays, initialScheduleState]);
 
     const baseUrl = import.meta.env.REACT_APP_BASE_URL || window.location.origin;
     const bookingUrl = user?.slug ? `${baseUrl}/book/${user.slug}` : "";
@@ -274,6 +343,38 @@ export default function BusinessSetupPage() {
     const handleSaveProfile = async () => {
         setIsSaving(true);
         try {
+            // Validation for Social/Contact fields
+            if (profileForm.isPhoneEnabled && !profileForm.phone.trim()) {
+                addToast("Please enter a phone number or remove it.", "error");
+                setIsSaving(false);
+                return;
+            }
+            if (profileForm.isContactEmailEnabled && !profileForm.contactEmail.trim()) {
+                addToast("Please enter an email or remove it.", "error");
+                setIsSaving(false);
+                return;
+            }
+            if (profileForm.isWebsiteEnabled && !profileForm.websiteUrl.trim()) {
+                addToast("Please enter a website URL or remove it.", "error");
+                setIsSaving(false);
+                return;
+            }
+            if (profileForm.isInstagramEnabled && !profileForm.instagramUrl.trim()) {
+                addToast("Please enter an Instagram URL or remove it.", "error");
+                setIsSaving(false);
+                return;
+            }
+            if (profileForm.isTikTokEnabled && !profileForm.tiktokUrl.trim()) {
+                addToast("Please enter a TikTok URL or remove it.", "error");
+                setIsSaving(false);
+                return;
+            }
+            if (profileForm.isFacebookEnabled && !profileForm.facebookUrl.trim()) {
+                addToast("Please enter a Facebook URL or remove it.", "error");
+                setIsSaving(false);
+                return;
+            }
+
             await updateUserProfileAction({
                 username: profileForm.username,
                 slug: profileForm.slug,
@@ -282,18 +383,163 @@ export default function BusinessSetupPage() {
                 closingTime: profileForm.closingTime,
                 workDays: profileForm.workDays.join(',') // Convert array to comma-separated string
             });
-            // Upsert business details for phone
-            if (profileForm.phone) {
-                await updateBusinessAction({
-                    name: business?.name || profileForm.username || "My Business", // Fallback name
-                    slug: profileForm.slug || user?.username || "business", // Fallback slug
-                    phone: profileForm.phone
-                });
-            }
+
+            // Upsert business details
+            await updateBusinessAction({
+                name: business?.name || profileForm.username || "My Business", // Fallback name
+                slug: profileForm.slug || user?.username || "business", // Fallback slug
+                phone: profileForm.phone,
+                instagramUrl: profileForm.instagramUrl,
+                isInstagramEnabled: profileForm.isInstagramEnabled,
+                tiktokUrl: profileForm.tiktokUrl,
+                isTikTokEnabled: profileForm.isTikTokEnabled,
+                facebookUrl: profileForm.facebookUrl,
+                isFacebookEnabled: profileForm.isFacebookEnabled,
+                websiteUrl: profileForm.websiteUrl,
+                isWebsiteEnabled: profileForm.isWebsiteEnabled,
+                contactEmail: profileForm.contactEmail,
+                isContactEmailEnabled: profileForm.isContactEmailEnabled,
+                isPhoneEnabled: profileForm.isPhoneEnabled,
+            });
 
             addToast("Profile settings saved!", 'success');
         } catch (error: any) {
             addToast("Failed to save profile: " + error.message, 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleTimezoneChange = async (newTimezone: string) => {
+        setProfileForm(prev => ({ ...prev, timezone: newTimezone }));
+        setIsTimezoneOpen(false);
+        try {
+            await updateUserProfileAction({
+                timezone: newTimezone
+            });
+            addToast("Timezone updated!", 'success');
+        } catch (error: any) {
+            addToast("Failed to update timezone: " + error.message, 'error');
+        }
+    };
+
+    const handleSaveSchedule = async () => {
+        if (!schedule?.id) return;
+        setIsSaving(true);
+        try {
+            await updateScheduleAction({
+                scheduleId: schedule.id,
+                days: scheduleDays
+            });
+            await refetchSchedule();
+            addToast("Availability saved!", 'success');
+        } catch (error: any) {
+            addToast("Failed to save changes: " + error.message, 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleAddSlot = (day: string) => {
+        setScheduleDays([...scheduleDays, { dayOfWeek: day, startTime: "09:00", endTime: "17:00" }]);
+    };
+
+    const handleRemoveSlot = (day: string, indexWithinDay: number) => {
+        // We need to find the correct index in the main array
+        // Filter slots for this day
+        const daySlots = scheduleDays.map((s, i) => ({ ...s, originalIndex: i })).filter(s => s.dayOfWeek === day);
+        if (daySlots[indexWithinDay]) {
+            const indexToRemove = daySlots[indexWithinDay].originalIndex;
+            const newDays = [...scheduleDays];
+            newDays.splice(indexToRemove, 1);
+            setScheduleDays(newDays);
+        }
+    };
+
+    const handleUpdateSlot = (day: string, indexWithinDay: number, field: 'startTime' | 'endTime', value: string) => {
+        const daySlots = scheduleDays.map((s, i) => ({ ...s, originalIndex: i })).filter(s => s.dayOfWeek === day);
+        if (daySlots[indexWithinDay]) {
+            const indexToUpdate = daySlots[indexWithinDay].originalIndex;
+            const newDays = [...scheduleDays];
+            newDays[indexToUpdate] = { ...newDays[indexToUpdate], [field]: value };
+            setScheduleDays(newDays);
+        }
+    };
+
+    const handleToggleDay = (day: string, enable: boolean) => {
+        if (enable) {
+            const hasSlot = scheduleDays.some(d => d.dayOfWeek === day);
+            if (!hasSlot) {
+                setScheduleDays([...scheduleDays, { dayOfWeek: day, startTime: "09:00", endTime: "17:00" }]);
+            }
+        } else {
+            setScheduleDays(scheduleDays.filter(d => d.dayOfWeek !== day));
+        }
+    };
+
+    const handleEditOverride = (override: any) => {
+        setSelectedDates([new Date(override.date)]);
+        setOverrideForm({
+            dates: [], // This will be overwritten by selectedDates
+            isUnavailable: override.isUnavailable,
+            startTime: override.startTime || "09:00",
+            endTime: override.endTime || "17:00"
+        });
+        setEditingOverrideId(override.id);
+        setIsOverrideModalOpen(true);
+    };
+
+    const handleDeleteOverride = (id: string) => {
+        setDeleteConfirmationId(id);
+    };
+
+    const confirmDeleteOverride = async () => {
+        if (!deleteConfirmationId || !schedule?.id) return;
+        setIsSaving(true);
+        try {
+            await updateScheduleOverrideAction({
+                scheduleId: schedule.id,
+                id: deleteConfirmationId,
+                dates: [], // Not used for delete action
+                isUnavailable: false, // Not used for delete action
+                action: 'delete'
+            });
+            await refetchSchedule();
+            addToast("Override deleted!", "success");
+            setDeleteConfirmationId(null);
+        } catch (error: any) {
+            addToast("Failed to delete override: " + error.message, "error");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSaveOverride = async () => {
+        if (!schedule?.id) return;
+        const formattedDates = (selectedDates || []).map(d => format(d, 'yyyy-MM-dd'));
+        if (formattedDates.length === 0) {
+            addToast("Please select at least one date", "error");
+            return;
+        }
+        setIsSaving(true);
+        try {
+            await updateScheduleOverrideAction({
+                scheduleId: schedule.id,
+                id: editingOverrideId || undefined, // Pass ID if editing
+                dates: formattedDates,
+                isUnavailable: overrideForm.isUnavailable,
+                startTime: overrideForm.isUnavailable ? undefined : overrideForm.startTime,
+                endTime: overrideForm.isUnavailable ? undefined : overrideForm.endTime,
+                action: editingOverrideId ? 'upsert' : 'upsert' // Action is upsert for both create and update
+            });
+            await refetchSchedule();
+            setIsOverrideModalOpen(false);
+            setOverrideForm({ dates: [], isUnavailable: false, startTime: "09:00", endTime: "17:00" }); // Reset
+            setSelectedDates([]);
+            setEditingOverrideId(null); // Reset editing state
+            addToast("Override saved!", "success");
+        } catch (error: any) {
+            addToast("Failed to save override: " + error.message, "error");
         } finally {
             setIsSaving(false);
         }
@@ -373,6 +619,41 @@ export default function BusinessSetupPage() {
         setIsServiceModalOpen(true);
     };
 
+    const hasChanges = useMemo(() => {
+        if (!user) return false;
+        const biz = business || {};
+
+        // User fields
+        if (profileForm.username !== (user.username || "")) return true;
+        if (profileForm.slug !== (user.slug || "")) return true;
+        if (profileForm.bio !== (user.bio || "")) return true;
+        if (profileForm.openingTime !== (user.openingTime || "09:00")) return true;
+        if (profileForm.closingTime !== (user.closingTime || "17:00")) return true;
+
+        const userWorkDays = user.workDays ? user.workDays.split(',') : ["mon", "tue", "wed", "thu", "fri"];
+        if (JSON.stringify(profileForm.workDays) !== JSON.stringify(userWorkDays)) return true;
+
+        // Business fields
+        if (profileForm.phone !== (biz.phone || "")) return true;
+        if (profileForm.isPhoneEnabled !== (biz.isPhoneEnabled ?? true)) return true;
+
+        // Socials - using the same logic as the useEffect for initial state
+        const checkSocial = (url: string, enabled: boolean, dbUrl: string | undefined | null, dbEnabled: boolean | undefined | null) => {
+            if (url !== (dbUrl || "")) return true;
+            const initialEnabled = !!dbUrl && (dbEnabled ?? false);
+            if (enabled !== initialEnabled) return true;
+            return false;
+        };
+
+        if (checkSocial(profileForm.instagramUrl, profileForm.isInstagramEnabled, biz.instagramUrl, biz.isInstagramEnabled)) return true;
+        if (checkSocial(profileForm.tiktokUrl, profileForm.isTikTokEnabled, biz.tiktokUrl, biz.isTikTokEnabled)) return true;
+        if (checkSocial(profileForm.facebookUrl, profileForm.isFacebookEnabled, biz.facebookUrl, biz.isFacebookEnabled)) return true;
+        if (checkSocial(profileForm.websiteUrl, profileForm.isWebsiteEnabled, biz.websiteUrl, biz.isWebsiteEnabled)) return true;
+        if (checkSocial(profileForm.contactEmail, profileForm.isContactEmailEnabled, biz.contactEmail, biz.isContactEmailEnabled)) return true;
+
+        return false;
+    }, [profileForm, user, business]);
+
     return (
         <DashboardLayout>
             <div className="w-full max-w-5xl mx-auto pb-20">
@@ -436,7 +717,18 @@ export default function BusinessSetupPage() {
                                 : "border-transparent text-muted-foreground hover:text-black"
                         )}
                     >
-                        Business Profile
+                        Profile
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('availability')}
+                        className={cn(
+                            "px-4 py-3 font-black text-sm uppercase border-b-4 transition-all",
+                            activeTab === 'availability'
+                                ? "border-black text-black"
+                                : "border-transparent text-muted-foreground hover:text-black"
+                        )}
+                    >
+                        Availability
                     </button>
                     <button
                         onClick={() => setActiveTab('services')}
@@ -546,196 +838,303 @@ export default function BusinessSetupPage() {
                                     </p>
                                 </div>
 
-                                {/* Phone Number */}
-                                <div>
-                                    <label className="block text-sm font-black uppercase mb-3">Phone Number</label>
-                                    <div className="flex gap-2">
-                                        <div className="relative w-32 flex-shrink-0">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setIsCountryDropdownOpen(!isCountryDropdownOpen);
-                                                    setCountrySearchQuery("");
-                                                }}
-                                                className="w-full h-full px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 flex items-center justify-between"
-                                            >
-                                                <span>
-                                                    {COUNTRY_CODES.find(c => profileForm.phone?.startsWith(c.code))?.code || "+1"}
-                                                </span>
-                                                <ChevronDown className="size-4 text-black stroke-[3px]" />
-                                            </button>
+                                {/* Contact & Socials Section */}
+                                <div className="pt-8 border-t-2 border-black/10">
+                                    <h3 className="text-xl font-black uppercase mb-6 flex items-center gap-2">
+                                        <Globe className="size-5" />
+                                        Contact & Socials
+                                    </h3>
 
-                                            {isCountryDropdownOpen && (
-                                                <>
-                                                    <div
-                                                        className="fixed inset-0 z-40"
-                                                        onClick={() => setIsCountryDropdownOpen(false)}
-                                                    />
-                                                    <div className="absolute top-full left-0 mt-1 w-64 z-50 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                        <div className="p-2 border-b-2 border-black flex items-center gap-2 sticky top-0 bg-white">
-                                                            <Search className="size-4 text-muted-foreground" />
-                                                            <input
-                                                                type="text"
-                                                                value={countrySearchQuery}
-                                                                onChange={(e) => setCountrySearchQuery(e.target.value)}
-                                                                placeholder="Search country..."
-                                                                className="w-full bg-transparent text-sm font-bold focus:outline-none"
-                                                                autoFocus
-                                                            />
-                                                        </div>
-                                                        <div className="max-h-60 overflow-y-auto">
-                                                            {COUNTRY_CODES
-                                                                .filter(c =>
-                                                                    c.country.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
-                                                                    c.code.includes(countrySearchQuery)
-                                                                )
-                                                                .map((c) => (
-                                                                    <button
-                                                                        key={c.code}
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            const newCode = c.code;
-                                                                            const currentPhone = profileForm.phone || "";
-                                                                            const oldCode = COUNTRY_CODES.find(curr => currentPhone.startsWith(curr.code))?.code || "+1";
-                                                                            const numberPart = currentPhone.startsWith(oldCode)
-                                                                                ? currentPhone.slice(oldCode.length).trim()
-                                                                                : currentPhone;
-
-                                                                            setProfileForm({ ...profileForm, phone: `${newCode} ${numberPart}` });
-                                                                            setIsCountryDropdownOpen(false);
-                                                                        }}
-                                                                        className="w-full px-4 py-2 text-left text-sm font-bold hover:bg-black hover:text-white transition-colors flex items-center justify-between group"
-                                                                    >
-                                                                        <span className="group-hover:translate-x-1 transition-transform">{c.country}</span>
-                                                                        <span>{c.code}</span>
-                                                                    </button>
-                                                                ))}
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                        <input
-                                            type="tel"
-                                            value={(() => {
-                                                const currentPhone = profileForm.phone || "";
-                                                const code = COUNTRY_CODES.find(c => currentPhone.startsWith(c.code))?.code || "+1";
-                                                return currentPhone.startsWith(code)
-                                                    ? currentPhone.slice(code.length).trim()
-                                                    : currentPhone;
-                                            })()}
-                                            onChange={(e) => {
-                                                const numberPart = e.target.value;
-                                                const currentPhone = profileForm.phone || "";
-                                                const code = COUNTRY_CODES.find(c => currentPhone.startsWith(c.code))?.code || "+1";
-                                                setProfileForm({ ...profileForm, phone: `${code} ${numberPart}` });
-                                            }}
-                                            className="flex-1 px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
-                                            placeholder="234 567 890"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Operation Hours */}
-                                <div>
-                                    <label className="block text-sm font-black uppercase mb-3">Operation Hours</label>
-
-                                    {/* Work Days Selection */}
-                                    <div className="mb-4">
-                                        <label className="block text-xs font-bold text-muted-foreground mb-2 uppercase">Work Days</label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => (
+                                    <div className="space-y-6">
+                                        {/* Phone Number */}
+                                        {profileForm.isPhoneEnabled && (
+                                            <div className="bg-gray-50 p-4 border-2 border-black/5 rounded-lg relative group">
                                                 <button
-                                                    key={day}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const currentDays = profileForm.workDays || [];
-                                                        const newDays = currentDays.includes(day)
-                                                            ? currentDays.filter(d => d !== day)
-                                                            : [...currentDays, day];
-                                                        setProfileForm({ ...profileForm, workDays: newDays });
-                                                    }}
-                                                    className={cn(
-                                                        "size-10 border-2 border-black font-black text-xs uppercase transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]",
-                                                        (profileForm.workDays || []).includes(day)
-                                                            ? "bg-primary text-black"
-                                                            : "bg-white text-muted-foreground hover:text-black"
-                                                    )}
+                                                    onClick={() => setProfileForm({ ...profileForm, isPhoneEnabled: false, phone: "" })}
+                                                    className="absolute top-2 right-2 p-1 hover:bg-black hover:text-white transition-colors rounded-full"
                                                 >
-                                                    {day.slice(0, 3)}
+                                                    <X className="size-4" />
                                                 </button>
-                                            ))}
-                                        </div>
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <Phone className="size-4" />
+                                                    <label className="text-sm font-black uppercase">Phone Number</label>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <div className="relative w-32 flex-shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setIsCountryDropdownOpen(!isCountryDropdownOpen);
+                                                                setCountrySearchQuery("");
+                                                            }}
+                                                            className="w-full h-full px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 flex items-center justify-between"
+                                                        >
+                                                            <span>
+                                                                {COUNTRY_CODES.find(c => profileForm.phone?.startsWith(c.code))?.code || "+1"}
+                                                            </span>
+                                                            <ChevronDown className="size-4 text-black stroke-[3px]" />
+                                                        </button>
+
+                                                        {isCountryDropdownOpen && (
+                                                            <>
+                                                                <div
+                                                                    className="fixed inset-0 z-40"
+                                                                    onClick={() => setIsCountryDropdownOpen(false)}
+                                                                />
+                                                                <div className="absolute top-full left-0 mt-1 w-64 z-50 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                                                    <div className="p-2 border-b-2 border-black flex items-center gap-2 sticky top-0 bg-white">
+                                                                        <Search className="size-4 text-muted-foreground" />
+                                                                        <input
+                                                                            type="text"
+                                                                            value={countrySearchQuery}
+                                                                            onChange={(e) => setCountrySearchQuery(e.target.value)}
+                                                                            placeholder="Search country..."
+                                                                            className="w-full bg-transparent text-sm font-bold focus:outline-none"
+                                                                            autoFocus
+                                                                        />
+                                                                    </div>
+                                                                    <div className="max-h-60 overflow-y-auto">
+                                                                        {COUNTRY_CODES
+                                                                            .filter(c =>
+                                                                                c.country.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
+                                                                                c.code.includes(countrySearchQuery)
+                                                                            )
+                                                                            .map((c) => (
+                                                                                <button
+                                                                                    key={c.code}
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        const newCode = c.code;
+                                                                                        const currentPhone = profileForm.phone || "";
+                                                                                        const oldCode = COUNTRY_CODES.find(curr => currentPhone.startsWith(curr.code))?.code || "+1";
+                                                                                        const numberPart = currentPhone.startsWith(oldCode)
+                                                                                            ? currentPhone.slice(oldCode.length).trim()
+                                                                                            : currentPhone;
+
+                                                                                        setProfileForm({ ...profileForm, phone: `${newCode} ${numberPart}` });
+                                                                                        setIsCountryDropdownOpen(false);
+                                                                                    }}
+                                                                                    className="w-full px-4 py-2 text-left text-sm font-bold hover:bg-black hover:text-white transition-colors flex items-center justify-between group"
+                                                                                >
+                                                                                    <span className="group-hover:translate-x-1 transition-transform">{c.country}</span>
+                                                                                    <span>{c.code}</span>
+                                                                                </button>
+                                                                            ))}
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    <input
+                                                        type="tel"
+                                                        value={(() => {
+                                                            const currentPhone = profileForm.phone || "";
+                                                            const code = COUNTRY_CODES.find(c => currentPhone.startsWith(c.code))?.code || "+1";
+                                                            return currentPhone.startsWith(code)
+                                                                ? currentPhone.slice(code.length).trim()
+                                                                : currentPhone;
+                                                        })()}
+                                                        onChange={(e) => {
+                                                            const numberPart = e.target.value;
+                                                            const currentPhone = profileForm.phone || "";
+                                                            const code = COUNTRY_CODES.find(c => currentPhone.startsWith(c.code))?.code || "+1";
+                                                            setProfileForm({ ...profileForm, phone: `${code} ${numberPart}` });
+                                                        }}
+                                                        className="flex-1 px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+                                                        placeholder="234 567 890"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Contact Email */}
+                                        {profileForm.isContactEmailEnabled && (
+                                            <div className="bg-gray-50 p-4 border-2 border-black/5 rounded-lg relative group">
+                                                <button
+                                                    onClick={() => setProfileForm({ ...profileForm, isContactEmailEnabled: false, contactEmail: "" })}
+                                                    className="absolute top-2 right-2 p-1 hover:bg-black hover:text-white transition-colors rounded-full"
+                                                >
+                                                    <X className="size-4" />
+                                                </button>
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <Mail className="size-4" />
+                                                    <label className="text-sm font-black uppercase">Public Contact Email</label>
+                                                </div>
+                                                <input
+                                                    type="email"
+                                                    value={profileForm.contactEmail}
+                                                    onChange={(e) => setProfileForm({ ...profileForm, contactEmail: e.target.value })}
+                                                    className="w-full px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+                                                    placeholder="contact@example.com"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Website */}
+                                        {profileForm.isWebsiteEnabled && (
+                                            <div className="bg-gray-50 p-4 border-2 border-black/5 rounded-lg relative group">
+                                                <button
+                                                    onClick={() => setProfileForm({ ...profileForm, isWebsiteEnabled: false, websiteUrl: "" })}
+                                                    className="absolute top-2 right-2 p-1 hover:bg-black hover:text-white transition-colors rounded-full"
+                                                >
+                                                    <X className="size-4" />
+                                                </button>
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <Globe className="size-4" />
+                                                    <label className="text-sm font-black uppercase">Website URL</label>
+                                                </div>
+                                                <input
+                                                    type="url"
+                                                    value={profileForm.websiteUrl}
+                                                    onChange={(e) => setProfileForm({ ...profileForm, websiteUrl: e.target.value })}
+                                                    className="w-full px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+                                                    placeholder="https://example.com"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Instagram */}
+                                        {profileForm.isInstagramEnabled && (
+                                            <div className="bg-gray-50 p-4 border-2 border-black/5 rounded-lg relative group">
+                                                <button
+                                                    onClick={() => setProfileForm({ ...profileForm, isInstagramEnabled: false, instagramUrl: "" })}
+                                                    className="absolute top-2 right-2 p-1 hover:bg-black hover:text-white transition-colors rounded-full"
+                                                >
+                                                    <X className="size-4" />
+                                                </button>
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <Instagram className="size-4" />
+                                                    <label className="text-sm font-black uppercase">Instagram URL</label>
+                                                </div>
+                                                <input
+                                                    type="url"
+                                                    value={profileForm.instagramUrl}
+                                                    onChange={(e) => setProfileForm({ ...profileForm, instagramUrl: e.target.value })}
+                                                    className="w-full px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+                                                    placeholder="https://instagram.com/username"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* TikTok */}
+                                        {profileForm.isTikTokEnabled && (
+                                            <div className="bg-gray-50 p-4 border-2 border-black/5 rounded-lg relative group">
+                                                <button
+                                                    onClick={() => setProfileForm({ ...profileForm, isTikTokEnabled: false, tiktokUrl: "" })}
+                                                    className="absolute top-2 right-2 p-1 hover:bg-black hover:text-white transition-colors rounded-full"
+                                                >
+                                                    <X className="size-4" />
+                                                </button>
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <div className="size-4 flex items-center justify-center font-black text-[8px] border-2 border-current rounded-full">TT</div>
+                                                    <label className="text-sm font-black uppercase">TikTok URL</label>
+                                                </div>
+                                                <input
+                                                    type="url"
+                                                    value={profileForm.tiktokUrl}
+                                                    onChange={(e) => setProfileForm({ ...profileForm, tiktokUrl: e.target.value })}
+                                                    className="w-full px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+                                                    placeholder="https://tiktok.com/@username"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Facebook */}
+                                        {profileForm.isFacebookEnabled && (
+                                            <div className="bg-gray-50 p-4 border-2 border-black/5 rounded-lg relative group">
+                                                <button
+                                                    onClick={() => setProfileForm({ ...profileForm, isFacebookEnabled: false, facebookUrl: "" })}
+                                                    className="absolute top-2 right-2 p-1 hover:bg-black hover:text-white transition-colors rounded-full"
+                                                >
+                                                    <X className="size-4" />
+                                                </button>
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <Facebook className="size-4" />
+                                                    <label className="text-sm font-black uppercase">Facebook URL</label>
+                                                </div>
+                                                <input
+                                                    type="url"
+                                                    value={profileForm.facebookUrl}
+                                                    onChange={(e) => setProfileForm({ ...profileForm, facebookUrl: e.target.value })}
+                                                    className="w-full px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+                                                    placeholder="https://facebook.com/username"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Add Button */}
+                                        {(!profileForm.isPhoneEnabled || !profileForm.isContactEmailEnabled || !profileForm.isWebsiteEnabled || !profileForm.isInstagramEnabled || !profileForm.isTikTokEnabled || !profileForm.isFacebookEnabled) && (
+                                            <div className="relative">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsAddContactOpen(!isAddContactOpen)}
+                                                    className="flex items-center gap-2 text-sm font-black uppercase border-2 border-dashed border-black/30 px-4 py-3 w-full hover:border-black hover:bg-gray-50 transition-all text-muted-foreground hover:text-black"
+                                                >
+                                                    <Plus className="size-4" />
+                                                    Add Contact or Social Link
+                                                </button>
+
+                                                {isAddContactOpen && (
+                                                    <>
+                                                        <div className="fixed inset-0 z-10" onClick={() => setIsAddContactOpen(false)} />
+                                                        <div className="absolute top-full left-0 w-full mt-2 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] z-20 py-2">
+                                                            {!profileForm.isPhoneEnabled && (
+                                                                <button
+                                                                    onClick={() => { setProfileForm({ ...profileForm, isPhoneEnabled: true }); setIsAddContactOpen(false); }}
+                                                                    className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 flex items-center gap-3"
+                                                                >
+                                                                    <Phone className="size-4" /> Phone Number
+                                                                </button>
+                                                            )}
+                                                            {!profileForm.isContactEmailEnabled && (
+                                                                <button
+                                                                    onClick={() => { setProfileForm({ ...profileForm, isContactEmailEnabled: true }); setIsAddContactOpen(false); }}
+                                                                    className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 flex items-center gap-3"
+                                                                >
+                                                                    <Mail className="size-4" /> Email
+                                                                </button>
+                                                            )}
+                                                            {!profileForm.isWebsiteEnabled && (
+                                                                <button
+                                                                    onClick={() => { setProfileForm({ ...profileForm, isWebsiteEnabled: true }); setIsAddContactOpen(false); }}
+                                                                    className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 flex items-center gap-3"
+                                                                >
+                                                                    <Globe className="size-4" /> Website
+                                                                </button>
+                                                            )}
+                                                            {!profileForm.isInstagramEnabled && (
+                                                                <button
+                                                                    onClick={() => { setProfileForm({ ...profileForm, isInstagramEnabled: true }); setIsAddContactOpen(false); }}
+                                                                    className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 flex items-center gap-3"
+                                                                >
+                                                                    <Instagram className="size-4" /> Instagram
+                                                                </button>
+                                                            )}
+                                                            {!profileForm.isTikTokEnabled && (
+                                                                <button
+                                                                    onClick={() => { setProfileForm({ ...profileForm, isTikTokEnabled: true }); setIsAddContactOpen(false); }}
+                                                                    className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 flex items-center gap-3"
+                                                                >
+                                                                    <div className="size-4 flex items-center justify-center font-black text-[8px] border-2 border-current rounded-full">TT</div> TikTok
+                                                                </button>
+                                                            )}
+                                                            {!profileForm.isFacebookEnabled && (
+                                                                <button
+                                                                    onClick={() => { setProfileForm({ ...profileForm, isFacebookEnabled: true }); setIsAddContactOpen(false); }}
+                                                                    className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 flex items-center gap-3"
+                                                                >
+                                                                    <Facebook className="size-4" /> Facebook
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-muted-foreground mb-1 uppercase">Opening Time</label>
-                                            <input
-                                                type="time"
-                                                value={profileForm.openingTime}
-                                                onChange={(e) => setProfileForm({ ...profileForm, openingTime: e.target.value })}
-                                                className="w-full px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 appearance-none"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-muted-foreground mb-1 uppercase">Closing Time</label>
-                                            <input
-                                                type="time"
-                                                value={profileForm.closingTime}
-                                                onChange={(e) => setProfileForm({ ...profileForm, closingTime: e.target.value })}
-                                                className="w-full px-4 py-2.5 border-2 border-black font-bold bg-white focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 appearance-none"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Operation Hours Summary */}
-                                    <p className="mt-3 text-xs font-bold text-muted-foreground">
-                                        {(() => {
-                                            const workDays = profileForm.workDays || [];
-                                            const allDays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-                                            const dayNames = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
-
-                                            if (workDays.length === 0) return 'No operation hours set';
-                                            if (workDays.length === 7) {
-                                                return `Open every day, ${formatTime(profileForm.openingTime)} - ${formatTime(profileForm.closingTime)}`;
-                                            }
-
-                                            // Find consecutive ranges
-                                            const sortedDays = allDays.filter(d => workDays.includes(d));
-                                            const notWorkingDays = allDays.filter(d => !workDays.includes(d));
-
-                                            let daysText = '';
-                                            if (sortedDays.length > 0) {
-                                                const firstDay = dayNames[sortedDays[0] as keyof typeof dayNames];
-                                                const lastDay = dayNames[sortedDays[sortedDays.length - 1] as keyof typeof dayNames];
-
-                                                if (sortedDays.length === 1) {
-                                                    daysText = firstDay;
-                                                } else if (sortedDays.length === 2) {
-                                                    daysText = `${firstDay} and ${lastDay}`;
-                                                } else {
-                                                    daysText = `${firstDay} - ${lastDay}`;
-                                                }
-                                            }
-
-                                            // Add exceptions if any
-                                            let exceptText = '';
-                                            if (notWorkingDays.length > 0 && notWorkingDays.length < 7) {
-                                                const exceptDayNames = notWorkingDays.map(d => dayNames[d as keyof typeof dayNames]);
-                                                if (exceptDayNames.length === 1) {
-                                                    exceptText = ` (Except ${exceptDayNames[0]})`;
-                                                } else if (exceptDayNames.length === 2) {
-                                                    exceptText = ` (Except ${exceptDayNames.join(' and ')})`;
-                                                } else {
-                                                    exceptText = ` (Except ${exceptDayNames.slice(0, -1).join(', ')} and ${exceptDayNames[exceptDayNames.length - 1]})`;
-                                                }
-                                            }
-
-                                            return `Open from ${daysText}${exceptText}, ${formatTime(profileForm.openingTime)} - ${formatTime(profileForm.closingTime)}`;
-                                        })()}
-                                    </p>
                                 </div>
+
+
 
                                 {/* Bio */}
                                 <div>
@@ -748,252 +1147,573 @@ export default function BusinessSetupPage() {
                                     />
                                 </div>
 
-                                <div className="pt-4 border-t-2 border-black/10 flex justify-end">
-                                    <button
-                                        onClick={handleSaveProfile}
-                                        disabled={isSaving}
-                                        className="bg-black text-white px-6 py-3 border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:scale-[1.02] transition-all disabled:opacity-50"
-                                    >
-                                        {isSaving ? "Saving..." : "Save Profile"}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'services' && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="flex justify-end mb-6">
-                                <button
-                                    onClick={() => openServiceModal()}
-                                    className="bg-primary text-black px-4 py-2.5 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all flex items-center gap-2 font-black text-sm uppercase"
-                                >
-                                    <Plus className="size-4" />
-                                    Add Service
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                {services && services.length > 0 ? (
-                                    [...services].sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1)).map((service: any) => (
-                                        <div
-                                            key={service.id}
-                                            className={cn(
-                                                "group relative bg-background border-2 border-black p-5 aspect-square flex flex-col justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all",
-                                                !service.isActive && "opacity-60 grayscale-[0.5]"
-                                            )}
-                                        >
-                                            <div>
-                                                <div className="flex items-start justify-between mb-3">
-                                                    <div className="bg-primary p-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                                                        <Package className="size-4 text-black" />
-                                                    </div>
-                                                    <span className={cn(
-                                                        "px-1.5 py-0.5 text-[8px] font-black border-2 border-black uppercase whitespace-nowrap",
-                                                        service.isActive ? "bg-green-200" : "bg-gray-200"
-                                                    )}>
-                                                        {service.isActive ? 'Active' : 'Inactive'}
-                                                    </span>
-                                                </div>
-                                                <h3 className="font-black text-sm uppercase leading-tight line-clamp-2">{service.name}</h3>
-                                                {service.description && (
-                                                    <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2 leading-tight">
-                                                        {service.description}
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            <div className="mt-auto pt-2 border-t-2 border-black/5">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <p className="text-xl font-black leading-none">${service.price}</p>
-                                                    </div>
-                                                    <div className="flex items-baseline gap-1">
-                                                        <p className="text-xl font-black text-black leading-none italic">
-                                                            {service.duration}
-                                                        </p>
-                                                        <p className="text-[10px] font-black text-muted-foreground uppercase leading-none">
-                                                            Mins
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="absolute inset-0 bg-white/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3">
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        onClick={() => openServiceModal(service)}
-                                                        className="p-2 border-2 border-black bg-white hover:bg-muted transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
-                                                        title="Edit Service"
-                                                    >
-                                                        <Edit className="size-4 text-black" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setDeleteModal({ isOpen: true, serviceId: service.id, serviceName: service.name })}
-                                                        className="p-2 border-2 border-black bg-red-100 hover:bg-red-200 transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
-                                                        title="Delete Service"
-                                                    >
-                                                        <Trash2 className="size-4 text-red-600" />
-                                                    </button>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleToggleActive(service)}
-                                                    className={cn(
-                                                        "px-3 py-1.5 border-2 border-black font-black text-[10px] uppercase transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]",
-                                                        service.isActive ? "bg-gray-200 text-black" : "bg-green-400 text-black"
-                                                    )}
-                                                >
-                                                    {service.isActive ? "Deactivate" : "Activate"}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="bg-muted/20 border-2 border-dashed border-black p-12 text-center">
-                                        <Package className="size-12 mx-auto text-muted-foreground mb-4" />
-                                        <h3 className="text-xl font-black uppercase mb-2">No Services Yet</h3>
-                                        <p className="text-muted-foreground mb-4 font-medium">Add your first service to get started.</p>
+                                {hasChanges && (
+                                    <div className="pt-4 border-t-2 border-black/10 flex justify-end animate-in fade-in slide-in-from-bottom-2">
                                         <button
-                                            onClick={() => openServiceModal()}
-                                            className="bg-primary text-black px-6 py-3 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all font-black text-sm uppercase"
+                                            onClick={handleSaveProfile}
+                                            disabled={isSaving}
+                                            className="bg-black text-white px-6 py-3 border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:scale-[1.02] transition-all disabled:opacity-50"
                                         >
-                                            Create Service
+                                            {isSaving ? "Saving..." : "Save Changes"}
                                         </button>
                                     </div>
                                 )}
                             </div>
                         </div>
                     )}
-                </div>
-            </div>
+
+                    {activeTab === 'availability' && (
+                        <div className="bg-background border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            {/* Header */}
+                            <h2 className="text-lg font-black uppercase mb-6 flex items-center gap-2">
+                                <Clock className="size-5" />
+                                Availability Schedule
+                            </h2>
+
+                            {/* Timezone Display */}
+                            <div className="mb-8">
+                                <label className="block text-xs font-bold text-muted-foreground mb-2 uppercase">Timezone</label>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setIsTimezoneOpen(!isTimezoneOpen)}
+                                        className="w-full flex items-center justify-between px-4 py-2.5 border-2 border-black font-bold text-sm bg-white hover:bg-muted/30 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Globe className="size-4 text-muted-foreground" />
+                                            <span>{profileForm.timezone}</span>
+                                        </div>
+                                        <ChevronDown className={cn("size-4 transition-transform", isTimezoneOpen && "rotate-180")} />
+                                    </button>
+
+                                    {isTimezoneOpen && (
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] z-50 max-h-60 flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                                            <div className="p-2 border-b-2 border-black/10 sticky top-0 bg-white z-10">
+                                                <div className="relative">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search timezone..."
+                                                        value={timezoneSearchQuery}
+                                                        onChange={(e) => setTimezoneSearchQuery(e.target.value)}
+                                                        className="w-full pl-9 pr-3 py-2 text-sm font-bold border-2 border-black/20 focus:border-black focus:outline-none transition-colors"
+                                                        autoFocus
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="overflow-y-auto flex-1 p-1">
+                                                {Intl.supportedValuesOf('timeZone')
+                                                    .filter(tz => tz.toLowerCase().includes(timezoneSearchQuery.toLowerCase()))
+                                                    .map((tz) => (
+                                                        <button
+                                                            key={tz}
+                                                            onClick={() => handleTimezoneChange(tz)}
+                                                            className={cn(
+                                                                "w-full text-left px-3 py-2 text-sm font-bold hover:bg-black hover:text-white transition-colors flex items-center justify-between group",
+                                                                profileForm.timezone === tz && "bg-black/5"
+                                                            )}
+                                                        >
+                                                            {tz}
+                                                            {profileForm.timezone === tz && (
+                                                                <Check className="size-4 opacity-100 group-hover:text-white" />
+                                                            )}
+                                                        </button>
+                                                    ))}
+                                                {Intl.supportedValuesOf('timeZone').filter(tz => tz.toLowerCase().includes(timezoneSearchQuery.toLowerCase())).length === 0 && (
+                                                    <div className="p-4 text-center text-sm font-bold text-muted-foreground">
+                                                        No timezones found
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+
+
+                            {/* Weekly Hours */}
+                            <div className="space-y-6 mb-8">
+                                <div className="flex items-center justify-between border-b-2 border-black/10 pb-2">
+                                    <h3 className="text-sm font-black uppercase">Weekly Hours</h3>
+                                    <button
+                                        onClick={() => {
+                                            if (confirm("Reset to standard business hours (Mon-Fri, 9am-5pm)?")) {
+                                                setScheduleDays([
+                                                    { dayOfWeek: "mon", startTime: "09:00", endTime: "17:00" },
+                                                    { dayOfWeek: "tue", startTime: "09:00", endTime: "17:00" },
+                                                    { dayOfWeek: "wed", startTime: "09:00", endTime: "17:00" },
+                                                    { dayOfWeek: "thu", startTime: "09:00", endTime: "17:00" },
+                                                    { dayOfWeek: "fri", startTime: "09:00", endTime: "17:00" },
+                                                ]);
+                                            }
+                                        }}
+                                        className="text-xs font-bold underline hover:text-black/70"
+                                    >
+                                        Reset to Standard Hours
+                                    </button>
+                                </div>
+                                <div className="space-y-4">
+                                    {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => {
+                                        const daySlots = scheduleDays.filter(s => s.dayOfWeek === day);
+                                        const isEnabled = daySlots.length > 0;
+
+                                        return (
+                                            <div key={day} className="flex flex-col sm:flex-row sm:items-start gap-4 py-2 border-b border-dashed border-gray-200 last:border-0">
+                                                {/* Toggle + Label */}
+                                                <div className="w-32 flex items-center gap-3 pt-2">
+                                                    <button
+                                                        onClick={() => handleToggleDay(day, !isEnabled)}
+                                                        className={cn("w-10 h-6 rounded-full border-2 border-black relative transition-colors", isEnabled ? "bg-black" : "bg-gray-200")}
+                                                    >
+                                                        <div className={cn("size-4 rounded-full border-2 border-black bg-white absolute top-0.5 transition-all", isEnabled ? "left-4" : "left-0.5")} />
+                                                    </button>
+                                                    <span className="font-bold uppercase text-sm">{day}</span>
+                                                </div>
+
+                                                {/* Slots */}
+                                                <div className="flex-1 space-y-2">
+                                                    {isEnabled ? (
+                                                        <>
+                                                            {daySlots.map((slot, idx) => (
+                                                                <div key={idx} className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <input
+                                                                            type="time"
+                                                                            value={slot.startTime}
+                                                                            onChange={(e) => handleUpdateSlot(day, idx, 'startTime', e.target.value)}
+                                                                            className="px-2 py-1 border-2 border-black font-bold text-sm bg-white w-28"
+                                                                        />
+                                                                        <span className="font-bold">-</span>
+                                                                        <input
+                                                                            type="time"
+                                                                            value={slot.endTime}
+                                                                            onChange={(e) => handleUpdateSlot(day, idx, 'endTime', e.target.value)}
+                                                                            className="px-2 py-1 border-2 border-black font-bold text-sm bg-white w-28"
+                                                                        />
+                                                                    </div>
+                                                                    <button onClick={() => handleRemoveSlot(day, idx)} className="p-1 hover:bg-red-100 text-red-500 rounded transition-colors">
+                                                                        <Trash2 className="size-4" />
+                                                                    </button>
+                                                                    {idx === daySlots.length - 1 && (
+                                                                        <button onClick={() => handleAddSlot(day)} className="p-1 hover:bg-gray-100 rounded transition-colors" title="Add another slot">
+                                                                            <Plus className="size-4" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </>
+                                                    ) : (
+                                                        <div className="pt-2 text-sm text-muted-foreground font-medium italic">Unavailable</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {isScheduleDirty && (
+                                    <div className="flex justify-end pt-4 animate-in fade-in slide-in-from-bottom-2">
+                                        <button
+                                            onClick={handleSaveSchedule}
+                                            disabled={isSaving}
+                                            className="bg-black text-white px-6 py-2 border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:scale-[1.02] transition-all disabled:opacity-50"
+                                        >
+                                            {isSaving ? "Saving..." : "Save Changes"}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Overrides */}
+                            <div className="space-y-6 pt-6 border-t-2 border-black/10">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-black uppercase">Date-Specific Hours</h3>
+                                    <button
+                                        onClick={() => {
+                                            setEditingOverrideId(null); // Ensure we're creating a new one
+                                            setSelectedDates([]);
+                                            setOverrideForm({ dates: [], isUnavailable: false, startTime: "09:00", endTime: "17:00" });
+                                            setIsOverrideModalOpen(true);
+                                        }}
+                                        className="bg-white text-black px-4 py-2 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"
+                                    >
+                                        <Plus className="size-4" /> Add Custom Date
+                                    </button>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {overrides.length === 0 && (
+                                        <p className="text-muted-foreground text-sm italic">No specific date overrides set.</p>
+                                    )}
+                                    {overrides.map((override) => (
+                                        <div key={override.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                            <div>
+                                                <div className="flex items-center gap-2 font-bold mb-1">
+                                                    <Calendar className="size-4" />
+                                                    <span>{override.date}</span>
+                                                </div>
+                                                <div className="text-sm">
+                                                    {override.isUnavailable ? (
+                                                        <span className="text-red-500 font-bold uppercase text-xs border border-red-500 px-1 rounded">Unavailable</span>
+                                                    ) : (
+                                                        <span>{formatTime(override.startTime)} - {formatTime(override.endTime)}</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 self-end sm:self-center">
+                                                <button
+                                                    onClick={() => handleEditOverride(override)}
+                                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                                    title="Edit Override"
+                                                >
+                                                    <Edit className="size-5" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteOverride(override.id)}
+                                                    className="p-1 hover:bg-red-100 text-red-500 rounded transition-colors"
+                                                    title="Delete Override"
+                                                >
+                                                    <Trash2 className="size-5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Override Modal */}
+                            {isOverrideModalOpen && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                                    <div className="bg-white border-2 border-black p-6 w-full max-w-md shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-in zoom-in-95 duration-200">
+                                        <h3 className="text-lg font-black uppercase mb-4">{editingOverrideId ? "Edit Custom Schedule" : "Add Custom Schedule"}</h3>
+
+                                        <div className="space-y-6">
+                                            {/* DayPicker with Neo-Brutalist Styles */}
+                                            <div className="flex flex-col items-center w-full ">
+                                                <div className="border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                                    <DayPicker
+                                                        mode="multiple"
+                                                        max={editingOverrideId ? 1 : undefined}
+                                                        selected={selectedDates}
+                                                        onSelect={setSelectedDates}
+                                                        classNames={{
+                                                            chevron: "fill-black",
+                                                            day: "p-1",
+                                                        }}
+                                                        disabled={{ before: new Date() }}
+                                                        modifiersClassNames={{
+                                                            disabled: "bg-gray-200 text-gray-400 opacity-50 cursor-not-allowed",
+                                                            selected: "bg-primary text-black border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] font-bold rounded-none hover:bg-primary hover:text-black focus:bg-primary focus:text-black active:bg-primary active:text-black",
+                                                            today: "font-black underline decoration-2 underline-offset-4 decoration-black",
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+
+
+
+                                            {/* Time Inputs */}
+                                            {!overrideForm.isUnavailable && (
+                                                <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                    <div>
+                                                        <label className="block text-xs font-bold uppercase mb-1">Start Time</label>
+                                                        <input
+                                                            type="time"
+                                                            value={overrideForm.startTime}
+                                                            onChange={(e) => setOverrideForm({ ...overrideForm, startTime: e.target.value })}
+                                                            className="w-full px-3 py-2 border-2 border-black font-bold h-12 bg-white focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:translate-x-[-2px] focus:translate-y-[-2px] transition-all outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold uppercase mb-1">End Time</label>
+                                                        <input
+                                                            type="time"
+                                                            value={overrideForm.endTime}
+                                                            onChange={(e) => setOverrideForm({ ...overrideForm, endTime: e.target.value })}
+                                                            className="w-full px-3 py-2 border-2 border-black font-bold h-12 bg-white focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:translate-x-[-2px] focus:translate-y-[-2px] transition-all outline-none"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Unavailable Toggle */}
+                                            <div className="flex items-center justify-between py-4 border-t-2 border-black/10">
+                                                <div className="flex items-center gap-3 w-full cursor-pointer group" onClick={() => setOverrideForm({ ...overrideForm, isUnavailable: !overrideForm.isUnavailable })}>
+                                                    <div className={cn("w-12 h-7 rounded-full border-2 border-black relative transition-colors", overrideForm.isUnavailable ? "bg-black" : "bg-gray-200 group-hover:bg-gray-300")}>
+                                                        <div className={cn("size-5 rounded-full border-2 border-black bg-white absolute top-0.5 transition-all", overrideForm.isUnavailable ? "left-5" : "left-0.5")} />
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-black text-sm uppercase">Mark as Unavailable</span>
+                                                        <span className="text-xs text-muted-foreground font-medium">Block bookings for these dates</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex justify-end gap-2 mt-6 border-t-2 border-black/10 pt-4">
+                                            <button
+                                                onClick={() => {
+                                                    setIsOverrideModalOpen(false);
+                                                    setSelectedDates([]);
+                                                    setEditingOverrideId(null);
+                                                }}
+                                                className="px-4 py-2 font-bold uppercase hover:bg-gray-100"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleSaveOverride}
+                                                disabled={isSaving || !selectedDates || selectedDates.length === 0}
+                                                className="bg-black text-white px-6 py-2 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                            >
+                                                Save Custom Date
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+
+                    {
+                        activeTab === 'services' && (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="flex justify-end mb-6">
+                                    <button
+                                        onClick={() => openServiceModal()}
+                                        className="bg-primary text-black px-4 py-2.5 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all flex items-center gap-2 font-black text-sm uppercase"
+                                    >
+                                        <Plus className="size-4" />
+                                        Add Service
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {services && services.length > 0 ? (
+                                        [...services].sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1)).map((service: any) => (
+                                            <div
+                                                key={service.id}
+                                                className={cn(
+                                                    "group relative bg-background border-2 border-black p-5 aspect-square flex flex-col justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all",
+                                                    !service.isActive && "opacity-60 grayscale-[0.5]"
+                                                )}
+                                            >
+                                                <div>
+                                                    <div className="flex items-start justify-between mb-3">
+                                                        <div className="bg-primary p-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                                            <Package className="size-4 text-black" />
+                                                        </div>
+                                                        <span className={cn(
+                                                            "px-1.5 py-0.5 text-[8px] font-black border-2 border-black uppercase whitespace-nowrap",
+                                                            service.isActive ? "bg-green-200" : "bg-gray-200"
+                                                        )}>
+                                                            {service.isActive ? 'Active' : 'Inactive'}
+                                                        </span>
+                                                    </div>
+                                                    <h3 className="font-black text-sm uppercase leading-tight line-clamp-2">{service.name}</h3>
+                                                    {service.description && (
+                                                        <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2 leading-tight">
+                                                            {service.description}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                <div className="mt-auto pt-2 border-t-2 border-black/5">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <p className="text-xl font-black leading-none">${service.price}</p>
+                                                        </div>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <p className="text-xl font-black text-black leading-none italic">
+                                                                {service.duration}
+                                                            </p>
+                                                            <p className="text-[10px] font-black text-muted-foreground uppercase leading-none">
+                                                                Mins
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="absolute inset-0 bg-white/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3">
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => openServiceModal(service)}
+                                                            className="p-2 border-2 border-black bg-white hover:bg-muted transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
+                                                            title="Edit Service"
+                                                        >
+                                                            <Edit className="size-4 text-black" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setDeleteModal({ isOpen: true, serviceId: service.id, serviceName: service.name })}
+                                                            className="p-2 border-2 border-black bg-red-100 hover:bg-red-200 transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
+                                                            title="Delete Service"
+                                                        >
+                                                            <Trash2 className="size-4 text-red-600" />
+                                                        </button>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleToggleActive(service)}
+                                                        className={cn(
+                                                            "px-3 py-1.5 border-2 border-black font-black text-[10px] uppercase transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]",
+                                                            service.isActive ? "bg-gray-200 text-black" : "bg-green-400 text-black"
+                                                        )}
+                                                    >
+                                                        {service.isActive ? "Deactivate" : "Activate"}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="bg-muted/20 border-2 border-dashed border-black p-12 text-center">
+                                            <Package className="size-12 mx-auto text-muted-foreground mb-4" />
+                                            <h3 className="text-xl font-black uppercase mb-2">No Services Yet</h3>
+                                            <p className="text-muted-foreground mb-4 font-medium">Add your first service to get started.</p>
+                                            <button
+                                                onClick={() => openServiceModal()}
+                                                className="bg-primary text-black px-6 py-3 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all font-black text-sm uppercase"
+                                            >
+                                                Create Service
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    }
+                </div >
+            </div >
 
             {/* Service Modal */}
-            {isServiceModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4">
-                    <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-md animate-in zoom-in-95 fade-in duration-200">
-                        <div className="bg-primary px-6 py-4 border-b-4 border-black flex items-center justify-between">
-                            <h2 className="text-xl font-black uppercase tracking-tight">
-                                {editingService ? "Edit Service" : "New Service"}
-                            </h2>
-                            <button
-                                onClick={() => setIsServiceModalOpen(false)}
-                                className="p-2 hover:bg-black/10 transition-colors border-2 border-black bg-white"
-                            >
-                                <ArrowRight className="size-4" />
-                            </button>
-                        </div>
-                        <form onSubmit={handleServiceSubmit} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-black uppercase mb-2">Service Name</label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={serviceForm.name}
-                                    onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
-                                    className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black"
-                                    placeholder="e.g. Haircut"
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-black uppercase mb-2">Duration (min)</label>
-                                    <input
-                                        type="number"
-                                        required
-                                        min="5"
-                                        step="5"
-                                        value={serviceForm.duration}
-                                        onChange={(e) => setServiceForm({ ...serviceForm, duration: parseInt(e.target.value) })}
-                                        className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-black uppercase mb-2">Price ($)</label>
-                                    <input
-                                        type="number"
-                                        required
-                                        min="0"
-                                        value={serviceForm.price}
-                                        onChange={(e) => setServiceForm({ ...serviceForm, price: parseFloat(e.target.value) })}
-                                        className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-black uppercase mb-2">Description</label>
-                                <textarea
-                                    value={serviceForm.description}
-                                    onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
-                                    className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black h-24 resize-none"
-                                    placeholder="Optional description..."
-                                />
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="isActive"
-                                    checked={serviceForm.isActive}
-                                    onChange={(e) => setServiceForm({ ...serviceForm, isActive: e.target.checked })}
-                                    className="size-5 border-2 border-black rounded-sm accent-black"
-                                />
-                                <label htmlFor="isActive" className="text-sm font-black uppercase cursor-pointer">
-                                    Active Service
-                                </label>
-                            </div>
-
-                            <div className="pt-4 border-t-2 border-black/10 flex justify-end gap-3">
+            {
+                isServiceModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4">
+                        <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-md animate-in zoom-in-95 fade-in duration-200">
+                            <div className="bg-primary px-6 py-4 border-b-4 border-black flex items-center justify-between">
+                                <h2 className="text-xl font-black uppercase tracking-tight">
+                                    {editingService ? "Edit Service" : "New Service"}
+                                </h2>
                                 <button
-                                    type="button"
                                     onClick={() => setIsServiceModalOpen(false)}
-                                    className="px-6 py-3 border-2 border-black font-black text-sm uppercase hover:bg-muted/50 transition-all"
+                                    className="p-2 hover:bg-black/10 transition-colors border-2 border-black bg-white"
                                 >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSaving}
-                                    className="px-6 py-3 bg-black text-white border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:scale-[1.02] transition-all disabled:opacity-70"
-                                >
-                                    {isSaving ? "Saving..." : (editingService ? "Update Service" : "Create Service")}
+                                    <ArrowRight className="size-4" />
                                 </button>
                             </div>
-                        </form>
+                            <form onSubmit={handleServiceSubmit} className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-black uppercase mb-2">Service Name</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={serviceForm.name}
+                                        onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
+                                        className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black"
+                                        placeholder="e.g. Haircut"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-black uppercase mb-2">Duration (min)</label>
+                                        <input
+                                            type="number"
+                                            required
+                                            min="5"
+                                            step="5"
+                                            value={serviceForm.duration}
+                                            onChange={(e) => setServiceForm({ ...serviceForm, duration: parseInt(e.target.value) })}
+                                            className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-black uppercase mb-2">Price ($)</label>
+                                        <input
+                                            type="number"
+                                            required
+                                            min="0"
+                                            value={serviceForm.price}
+                                            onChange={(e) => setServiceForm({ ...serviceForm, price: parseFloat(e.target.value) })}
+                                            className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-black uppercase mb-2">Description</label>
+                                    <textarea
+                                        value={serviceForm.description}
+                                        onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
+                                        className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black h-24 resize-none"
+                                        placeholder="Optional description..."
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="isActive"
+                                        checked={serviceForm.isActive}
+                                        onChange={(e) => setServiceForm({ ...serviceForm, isActive: e.target.checked })}
+                                        className="size-5 border-2 border-black rounded-sm accent-black"
+                                    />
+                                    <label htmlFor="isActive" className="text-sm font-black uppercase cursor-pointer">
+                                        Active Service
+                                    </label>
+                                </div>
+
+                                <div className="pt-4 border-t-2 border-black/10 flex justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsServiceModalOpen(false)}
+                                        className="px-6 py-3 border-2 border-black font-black text-sm uppercase hover:bg-muted/50 transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isSaving}
+                                        className="px-6 py-3 bg-black text-white border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:scale-[1.02] transition-all disabled:opacity-70"
+                                    >
+                                        {isSaving ? "Saving..." : (editingService ? "Update Service" : "Create Service")}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Delete Confirmation Modal */}
-            {deleteModal.isOpen && (
-                <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4">
-                    <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-sm animate-in zoom-in-95 fade-in duration-200">
-                        <div className="bg-red-500 px-6 py-4 border-b-4 border-black text-white">
-                            <h2 className="text-xl font-black uppercase tracking-tight">Delete Service?</h2>
-                        </div>
-                        <div className="p-6">
-                            <p className="font-bold mb-6">
-                                Are you sure you want to delete <span className="uppercase text-red-600 underline">"{deleteModal.serviceName}"</span>? This action cannot be undone.
-                            </p>
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => setDeleteModal({ isOpen: false, serviceId: null, serviceName: "" })}
-                                    className="flex-1 py-3 border-2 border-black font-black text-sm uppercase hover:bg-muted/50 transition-all"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleDeleteService}
-                                    disabled={isDeleting}
-                                    className="flex-1 py-3 bg-red-500 text-white border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[4px] active:translate-y-[4px] disabled:opacity-70 transition-all"
-                                >
-                                    {isDeleting ? "Deleting..." : "Delete"}
-                                </button>
+            {
+                deleteModal.isOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4">
+                        <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-sm animate-in zoom-in-95 fade-in duration-200">
+                            <div className="bg-red-500 px-6 py-4 border-b-4 border-black text-white">
+                                <h2 className="text-xl font-black uppercase tracking-tight">Delete Service?</h2>
+                            </div>
+                            <div className="p-6">
+                                <p className="font-bold mb-6">
+                                    Are you sure you want to delete <span className="uppercase text-red-600 underline">"{deleteModal.serviceName}"</span>? This action cannot be undone.
+                                </p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setDeleteModal({ isOpen: false, serviceId: null, serviceName: "" })}
+                                        className="flex-1 py-3 border-2 border-black font-black text-sm uppercase hover:bg-muted/50 transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleDeleteService}
+                                        disabled={isDeleting}
+                                        className="flex-1 py-3 bg-red-500 text-white border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[4px] active:translate-y-[4px] disabled:opacity-70 transition-all"
+                                    >
+                                        {isDeleting ? "Deleting..." : "Delete"}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             <ToastContainer toasts={toasts} onRemove={removeToast} />
-        </DashboardLayout>
+        </DashboardLayout >
     );
 }

@@ -1,6 +1,7 @@
 import type { GetUserBySlug, GetAvailableSlots, CreatePublicBooking } from "wasp/server/operations";
 import { HttpError } from "wasp/server";
 import { getDownloadFileSignedURLFromS3 } from "../file-upload/s3Utils";
+import { availableSlotsForWindow, type TimeRange } from "../utils/availableSlots";
 
 export const getUserBySlug: GetUserBySlug<{ slug: string }, any> = async (args, context) => {
     const user = await context.entities.User.findUnique({
@@ -34,73 +35,254 @@ export const getUserBySlug: GetUserBySlug<{ slug: string }, any> = async (args, 
     return {
         ...user,
         profileImageUrl,
-        profileImageFile: undefined, // Don't expose s3Key to client
+        profileImageFile: undefined,
+        timezone: user.timezone || "UTC",
     };
 };
 
-export const getAvailableSlots: GetAvailableSlots<{ slug: string; date: string }, string[]> = async (args, context) => {
+/**
+ * Cal.com-style availability calculation using the availableSlotsForWindow utility.
+ * 
+ * Algorithm:
+ * 1. Get working hours for the requested date
+ * 2. Get existing bookings for that date
+ * 3. Use availableSlotsForWindow to subtract busy times and generate slots
+ * 4. Filter out past slots for today
+ * 5. Return time strings (HH:MM) for frontend display
+ * 
+ * All times are treated as "minutes since midnight" using a reference date to avoid timezone issues.
+ */
+
+type GetAvailableSlotsArgs = {
+    slug: string;
+    date: string; // YYYY-MM-DD 
+    visitorTimezone?: string;
+    serviceId?: string;
+};
+
+export const getAvailableSlots: GetAvailableSlots<GetAvailableSlotsArgs, string[]> = async (args, context) => {
+    console.log("[getAvailableSlots] Called with:", args);
+
     const user = await context.entities.User.findUnique({
         where: { slug: args.slug },
+        include: {
+            schedules: {
+                include: { days: true, overrides: true }
+            }
+        }
     });
 
     if (!user) throw new HttpError(404, "User not found");
-    if (!user.openingTime || !user.closingTime || !user.workDays) return [];
 
-    const date = new Date(args.date);
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
-    const workDays = user.workDays.toLowerCase().split(',');
+    // Get service duration if serviceId provided, default to 30 min
+    let serviceDuration = 30;
+    if (args.serviceId) {
+        const service = await context.entities.Service.findUnique({
+            where: { id: args.serviceId }
+        });
+        if (service) {
+            serviceDuration = service.duration;
+        }
+    }
 
-    if (!workDays.includes(dayName)) return [];
+    // Parse the requested date (YYYY-MM-DD format)
+    const [year, month, day] = args.date.split('-').map(Number);
 
-    // Get existing bookings for this user on this day
-    const startOfDay = new Date(args.date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(args.date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Get day of week for schedule lookup
+    const requestedLocalDate = new Date(year, month - 1, day);
+    const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const dayName = dayNames[requestedLocalDate.getDay()];
 
-    const bookings = await context.entities.Booking.findMany({
+    console.log("[getAvailableSlots] Date:", args.date, "Day:", dayName);
+
+    // STEP 1: Get working ranges for this day
+    let workingRanges: { startTime: string; endTime: string }[] = [];
+
+    if (user.schedules && user.schedules.length > 0) {
+        const schedule = user.schedules[0];
+
+        // Check for date-specific override
+        const override = schedule.overrides.find((o: any) => o.date === args.date);
+
+        if (override) {
+            if (override.isUnavailable) {
+                console.log("[getAvailableSlots] Day blocked by override");
+                return [];
+            }
+            if (override.startTime && override.endTime) {
+                workingRanges.push({
+                    startTime: override.startTime,
+                    endTime: override.endTime
+                });
+            }
+        } else {
+            // Get regular schedule for this day
+            const daySlots = schedule.days.filter((d: any) => d.dayOfWeek === dayName);
+
+            if (daySlots.length === 0) {
+                console.log("[getAvailableSlots] Day off - no schedule for", dayName);
+                return [];
+            }
+
+            workingRanges = daySlots.map((d: any) => ({
+                startTime: d.startTime,
+                endTime: d.endTime
+            }));
+        }
+    } else {
+        // Fallback to legacy fields
+        if (!user.openingTime || !user.closingTime || !user.workDays) {
+            console.log("[getAvailableSlots] No schedule configured");
+            return [];
+        }
+
+        const workDays = user.workDays.toLowerCase().split(',').map(d => d.trim());
+        if (!workDays.includes(dayName)) {
+            console.log("[getAvailableSlots] Day off (legacy) -", dayName, "not in", workDays);
+            return [];
+        }
+
+        workingRanges.push({
+            startTime: user.openingTime,
+            endTime: user.closingTime
+        });
+    }
+
+    console.log("[getAvailableSlots] Working ranges:", workingRanges);
+
+    // STEP 2: Get existing bookings and convert to TimeRange format
+    const searchStartUtc = new Date(Date.UTC(year, month - 1, day - 1, 0, 0, 0));
+    const searchEndUtc = new Date(Date.UTC(year, month - 1, day + 1, 23, 59, 59));
+
+    console.log('searchStartUtc', searchStartUtc);
+    console.log('searchEndUtc', searchEndUtc);
+    console.log('user.id', user.id);
+    const allBookings = await context.entities.Booking.findMany({
         where: {
             staffId: user.id,
-            date: {
-                gte: startOfDay,
-                lte: endOfDay,
+            startTimeUtc: {
+                gte: searchStartUtc,
+                lte: searchEndUtc,
             },
             status: { notIn: ["cancelled"] }
         },
     });
 
-    const [openH, openM] = user.openingTime.split(':').map(Number);
-    const [closeH, closeM] = user.closingTime.split(':').map(Number);
+    // Use a fixed reference date so all times are comparable
+    const REFERENCE_DATE = Date.UTC(2000, 0, 1, 0, 0, 0);
 
-    const slots: string[] = [];
-    let current = new Date(args.date);
-    current.setHours(openH, openM, 0, 0);
+    const bookingsAsTimeRanges: TimeRange[] = allBookings
+        .filter((b: any) => {
+            // Filter bookings for the requested date based on startTimeUtc
+            const bookingDateStr = b.startTimeUtc.toISOString().split('T')[0];
+            return bookingDateStr === args.date;
+        })
+        .map((b: any) => {
+            // Extract hours/minutes from the UTC timestamps
+            const startHours = b.startTimeUtc.getUTCHours();
+            const startMins = b.startTimeUtc.getUTCMinutes();
+            const startMinutes = startHours * 60 + startMins;
 
-    const finish = new Date(args.date);
-    finish.setHours(closeH, closeM, 0, 0);
+            const endHours = b.endTimeUtc.getUTCHours();
+            const endMins = b.endTimeUtc.getUTCMinutes();
+            const endMinutes = endHours * 60 + endMins;
 
-    // 30-minute intervals
-    while (current < finish) {
-        const timeStr = current.toTimeString().slice(0, 5);
+            const startDate = new Date(REFERENCE_DATE + startMinutes * 60000);
+            const endDate = new Date(REFERENCE_DATE + endMinutes * 60000);
 
-        // Check if slot is taken
-        const isAvailable = !bookings.some(b => b.startTime === timeStr);
-        if (isAvailable) {
-            slots.push(timeStr);
-        }
+            console.log("[getAvailableSlots] Booking:", `${startHours}:${startMins}`, "to", `${endHours}:${endMins}`);
 
-        current.setMinutes(current.getMinutes() + 30);
+            return { start: startDate, end: endDate };
+        });
+
+    console.log("[getAvailableSlots] Bookings count:", bookingsAsTimeRanges.length);
+
+    // STEP 3: Calculate earliest allowed slot start (current LOCAL time + 5 min for today)
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isToday = args.date === todayStr;
+
+    let earliestStart: Date | null = null;
+    if (isToday) {
+        const nowMinutes = now.getHours() * 60 + now.getMinutes() + 5;
+        const roundedMinutes = Math.ceil(nowMinutes / 30) * 30;
+        earliestStart = new Date(REFERENCE_DATE + roundedMinutes * 60000);
+        console.log("[getAvailableSlots] Is today, earliest:", roundedMinutes, "minutes");
     }
 
-    return slots;
+    // STEP 4: For each working range, compute available slots using the utility
+    const allSlots: string[] = [];
+
+    for (const range of workingRanges) {
+        const [startH, startM] = range.startTime.split(':').map(Number);
+        const [endH, endM] = range.endTime.split(':').map(Number);
+
+        const workingStartMinutes = startH * 60 + startM;
+        const workingEndMinutes = endH * 60 + endM;
+
+        const workingStart = new Date(REFERENCE_DATE + workingStartMinutes * 60000);
+        const workingEnd = new Date(REFERENCE_DATE + workingEndMinutes * 60000);
+
+        console.log("[getAvailableSlots] Working window:", range.startTime, "-", range.endTime);
+
+        // Use the utility function - NO buffers for simplicity
+        const slots = availableSlotsForWindow({
+            workingStart,
+            workingEnd,
+            bookings: bookingsAsTimeRanges,
+            slotLengthMinutes: serviceDuration,
+            slotStepMinutes: 30,
+            bufferBeforeMinutes: 0,  // No buffer
+            bufferAfterMinutes: 0,   // No buffer
+            earliestStart: earliestStart,
+            alignToMinutes: 30,
+            returnIso: false,
+        }) as TimeRange[];
+
+        console.log("[getAvailableSlots] Slots from utility:", slots.length);
+
+        // Convert to HH:MM format
+        for (const slot of slots) {
+            const slotMs = slot.start.getTime() - REFERENCE_DATE;
+            const totalMinutes = Math.floor(slotMs / 60000);
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+            allSlots.push(timeStr);
+        }
+    }
+
+    const uniqueSlots = [...new Set(allSlots)].sort();
+    console.log("[getAvailableSlots] Final slots:", uniqueSlots);
+
+    return uniqueSlots;
 };
 
-export const createPublicBooking: CreatePublicBooking<any, any> = async (args, context) => {
+type CreatePublicBookingArgs = {
+    slug: string;
+    serviceId: string;
+    date: string; // YYYY-MM-DD
+    time: string; // HH:MM
+    clientName: string;
+    clientPhone: string;
+    clientEmail?: string;
+    notes?: string;
+    visitorTimezone?: string;
+};
+
+export const createPublicBooking: CreatePublicBooking<CreatePublicBookingArgs, any> = async (args, context) => {
     const { slug, serviceId, date, time, clientName, clientPhone, clientEmail, notes } = args;
+
+    console.log("[createPublicBooking] Called with:", { slug, serviceId, date, time });
 
     const user = await context.entities.User.findUnique({
         where: { slug },
-        include: { business: true }
+        include: {
+            business: true,
+            schedules: {
+                include: { days: true, overrides: true }
+            }
+        }
     });
 
     if (!user || !user.businessId) throw new HttpError(404, "Provider not found");
@@ -111,7 +293,127 @@ export const createPublicBooking: CreatePublicBooking<any, any> = async (args, c
 
     if (!service) throw new HttpError(404, "Service not found");
 
-    // 1. Upsert Customer
+    // Parse the booking date and time
+    const [year, month, day] = date.split('-').map(Number);
+    const [startH, startM] = time.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = startMinutes + service.duration;
+
+    const bookingDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+
+    console.log("[createPublicBooking] Booking date (UTC):", bookingDate.toISOString());
+
+    // Check if booking is in the past
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentTimeMin = now.getHours() * 60 + now.getMinutes();
+
+    if (date < todayStr || (date === todayStr && startMinutes <= currentTimeMin)) {
+        throw new HttpError(400, "Cannot book a time slot in the past");
+    }
+
+    // Get day of week
+    const localDate = new Date(year, month - 1, day);
+    const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const dayName = dayNames[localDate.getDay()];
+
+    // Check if slot is within working hours
+    let isWithinSchedule = false;
+    let workingRanges: { start: number; end: number }[] = [];
+
+    if (user.schedules && user.schedules.length > 0) {
+        const schedule = user.schedules[0];
+        const override = schedule.overrides.find((o: any) => o.date === date);
+
+        if (override) {
+            if (override.isUnavailable) {
+                throw new HttpError(400, "Selected date is unavailable");
+            }
+            if (override.startTime && override.endTime) {
+                const [sH, sM] = override.startTime.split(':').map(Number);
+                const [eH, eM] = override.endTime.split(':').map(Number);
+                workingRanges.push({ start: sH * 60 + sM, end: eH * 60 + eM });
+            }
+        } else {
+            const daySlots = schedule.days.filter((d: any) => d.dayOfWeek === dayName);
+
+            if (daySlots.length === 0) {
+                throw new HttpError(400, "Selected date is unavailable (day off)");
+            }
+
+            workingRanges = daySlots.map((d: any) => {
+                const [sH, sM] = d.startTime.split(':').map(Number);
+                const [eH, eM] = d.endTime.split(':').map(Number);
+                return { start: sH * 60 + sM, end: eH * 60 + eM };
+            });
+        }
+
+        isWithinSchedule = workingRanges.some(r => startMinutes >= r.start && endMinutes <= r.end);
+
+    } else {
+        if (!user.openingTime || !user.closingTime || !user.workDays) {
+            throw new HttpError(400, "Provider has not set up availability");
+        }
+
+        const workDays = user.workDays.toLowerCase().split(',').map(d => d.trim());
+
+        if (!workDays.includes(dayName)) {
+            throw new HttpError(400, "Selected date is a day off");
+        }
+
+        const [openH, openM] = user.openingTime.split(':').map(Number);
+        const [closeH, closeM] = user.closingTime.split(':').map(Number);
+        const openMin = openH * 60 + openM;
+        const closeMin = closeH * 60 + closeM;
+
+        if (startMinutes >= openMin && endMinutes <= closeMin) {
+            isWithinSchedule = true;
+        }
+    }
+
+    if (!isWithinSchedule) {
+        throw new HttpError(400, "Selected time is outside of working hours");
+    }
+
+    // Check for overlaps with existing bookings
+    const searchStartUtc = new Date(Date.UTC(year, month - 1, day - 1, 0, 0, 0));
+    const searchEndUtc = new Date(Date.UTC(year, month - 1, day + 1, 23, 59, 59));
+
+    const allBookings = await context.entities.Booking.findMany({
+        where: {
+            staffId: user.id,
+            startTimeUtc: {
+                gte: searchStartUtc,
+                lte: searchEndUtc,
+            },
+            status: { notIn: ["cancelled"] }
+        },
+    });
+
+    const existingBookings = allBookings.filter((b: any) => {
+        const bookingDateStr = b.startTimeUtc.toISOString().split('T')[0];
+        return bookingDateStr === date;
+    });
+
+    console.log("[createPublicBooking] Existing bookings for", date, ":", existingBookings.length);
+
+    // Simple overlap check using UTC timestamps (no buffers)
+    const hasOverlap = existingBookings.some((b: any) => {
+        const bStartMin = b.startTimeUtc.getUTCHours() * 60 + b.startTimeUtc.getUTCMinutes();
+        const bEndMin = b.endTimeUtc.getUTCHours() * 60 + b.endTimeUtc.getUTCMinutes();
+
+        const overlaps = startMinutes < bEndMin && endMinutes > bStartMin;
+        if (overlaps) {
+            console.log("[createPublicBooking] Overlap with booking at", `${b.startTimeUtc.getUTCHours()}:${b.startTimeUtc.getUTCMinutes()}`);
+        }
+        return overlaps;
+    });
+
+    if (hasOverlap) {
+        throw new HttpError(409, "Selected time slot is already booked");
+    }
+
+    // Upsert Customer
     let customer = await context.entities.Customer.findFirst({
         where: {
             phone: clientPhone,
@@ -131,19 +433,27 @@ export const createPublicBooking: CreatePublicBooking<any, any> = async (args, c
         });
     }
 
-    // 2. Create Booking
-    return await context.entities.Booking.create({
+    // Compute UTC timestamps
+    const startTimeUtc = new Date(Date.UTC(year, month - 1, day, startH, startM));
+    const endTimeUtc = new Date(startTimeUtc.getTime() + service.duration * 60000);
+
+    // Create Booking
+    const booking = await context.entities.Booking.create({
         data: {
             businessId: user.businessId,
             customerId: customer.id,
             serviceId: service.id,
             staffId: user.id,
-            date: new Date(date),
-            startTime: time,
-            duration: service.duration,
+            date: bookingDate,
             price: service.price,
             notes,
-            status: "confirmed"
+            status: "confirmed",
+            startTimeUtc,
+            endTimeUtc,
         }
     });
+
+    console.log("[createPublicBooking] Created booking:", booking.id);
+
+    return booking;
 };

@@ -15,9 +15,18 @@ interface Staff {
     name: string;
 }
 
+interface Customer {
+    id: string;
+    name: string;
+    phone: string;
+    email?: string;
+}
+
+
 interface NewBookingModalProps {
     services: Service[];
     staff: Staff[];
+    customers?: Customer[];
     onClose: () => void;
     onSubmit: (booking: any) => void;
     onDelete?: (bookingId: string) => void;
@@ -31,7 +40,7 @@ const timeSlots = [
     "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30"
 ];
 
-export default function NewBookingModal({ services, staff, onClose, onSubmit, onDelete, initialData, bookingId }: NewBookingModalProps) {
+export default function NewBookingModal({ services, staff, customers = [], onClose, onSubmit, onDelete, initialData, bookingId }: NewBookingModalProps) {
     const [formData, setFormData] = useState({
         clientName: "",
         clientPhone: "",
@@ -69,6 +78,7 @@ export default function NewBookingModal({ services, staff, onClose, onSubmit, on
         if (!formData.clientPhone.trim()) newErrors.clientPhone = "Phone number is required";
         if (!formData.date) newErrors.date = "Date is required";
         if (!formData.time) newErrors.time = "Time is required";
+        else if (!availableTimeSlots.includes(formData.time)) newErrors.time = "Selected time is no longer available";
         if (!formData.serviceId) newErrors.serviceId = "Please select a service";
         if (!formData.staffId) newErrors.staffId = "Please select a staff member";
 
@@ -90,6 +100,23 @@ export default function NewBookingModal({ services, staff, onClose, onSubmit, on
 
     const selectedService = services.find(s => s.id === formData.serviceId);
 
+    const availableTimeSlots = timeSlots.filter(slot => {
+        const now = new Date();
+        if (formData.date === format(now, 'yyyy-MM-dd')) {
+            const [h, m] = slot.split(':').map(Number);
+            const slotDate = new Date();
+            slotDate.setHours(h, m, 0, 0);
+            return slotDate > now;
+        }
+        return true;
+    });
+
+    useEffect(() => {
+        if (availableTimeSlots.length > 0 && !availableTimeSlots.includes(formData.time)) {
+            setFormData(prev => ({ ...prev, time: availableTimeSlots[0] }));
+        }
+    }, [formData.date, formData.time]);
+
     // Format duration for display
     const formatDuration = (minutes: number) => {
         if (minutes >= 60) {
@@ -98,6 +125,14 @@ export default function NewBookingModal({ services, staff, onClose, onSubmit, on
             return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
         }
         return `${minutes}m`;
+    };
+
+    // Format time with AM/PM
+    const formatTimeWithAMPM = (time: string) => {
+        const [hours, minutes] = time.split(':').map(Number);
+        const period = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
+        return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
     };
 
     return (
@@ -132,6 +167,34 @@ export default function NewBookingModal({ services, staff, onClose, onSubmit, on
                                 <User className="size-4" />
                                 Customer Information
                             </h3>
+                            {/* Existing Customer Selection */}
+                            <div className="mb-4">
+                                <label className="block text-sm font-black uppercase mb-2">
+                                    Select Existing Customer (Optional)
+                                </label>
+                                <select
+                                    onChange={(e) => {
+                                        const customer = customers.find(c => c.id === e.target.value);
+                                        if (customer) {
+                                            setFormData({
+                                                ...formData,
+                                                clientName: customer.name,
+                                                clientPhone: customer.phone
+                                            });
+                                        }
+                                    }}
+                                    className="w-full px-4 py-3 border-2 border-black font-bold text-sm focus:outline-none focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer"
+                                    defaultValue=""
+                                >
+                                    <option value="">Select a customer...</option>
+                                    {customers.map(customer => (
+                                        <option key={customer.id} value={customer.id}>
+                                            {customer.name} ({customer.phone})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <div className="space-y-4">
                                 {/* Customer Name */}
                                 <div>
@@ -214,8 +277,9 @@ export default function NewBookingModal({ services, staff, onClose, onSubmit, on
                                             errors.time && "border-red-500"
                                         )}
                                     >
-                                        {timeSlots.map(slot => (
-                                            <option key={slot} value={slot}>{slot}</option>
+                                        {availableTimeSlots.length === 0 && <option value="">No times available</option>}
+                                        {availableTimeSlots.map(slot => (
+                                            <option key={slot} value={slot}>{formatTimeWithAMPM(slot)}</option>
                                         ))}
                                     </select>
                                     {errors.time && (

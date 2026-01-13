@@ -1,4 +1,4 @@
-import type { GetBusinessByUser, GetServicesByBusinessAndUserId, UpsertBusiness, CreateService, UpdateService, DeleteService, GetBookingsByBusiness, GetCustomersByBusiness, CreateBooking } from "wasp/server/operations";
+import type { GetBusinessByUser, GetServicesByBusinessAndUserId, UpsertBusiness, CreateService, UpdateService, DeleteService, GetBookingsByBusiness, GetBookingsByUser, GetCustomersByBusiness, CreateBooking, GetSchedule, UpdateSchedule, UpdateScheduleOverride, GetPromosByBusiness, CreatePromo, UpdatePromo, DeletePromo, GetCalendarBookings, GetReviewsByBusiness, CreateReview, DeleteReview } from "wasp/server/operations";
 import { deleteFileFromS3, getDownloadFileSignedURLFromS3 } from "../file-upload/s3Utils";
 
 // Queries
@@ -93,6 +93,17 @@ type UpsertBusinessArgs = {
     phone?: string | null;
     imageUrl?: string | null;
     logoUrl?: string | null;
+    instagramUrl?: string | null;
+    isInstagramEnabled?: boolean;
+    tiktokUrl?: string | null;
+    isTikTokEnabled?: boolean;
+    facebookUrl?: string | null;
+    isFacebookEnabled?: boolean;
+    websiteUrl?: string | null;
+    isWebsiteEnabled?: boolean;
+    contactEmail?: string | null;
+    isContactEmailEnabled?: boolean;
+    isPhoneEnabled?: boolean;
 };
 
 export const upsertBusiness: UpsertBusiness<UpsertBusinessArgs, any> = async (args, context) => {
@@ -104,27 +115,36 @@ export const upsertBusiness: UpsertBusiness<UpsertBusinessArgs, any> = async (ar
         where: { id: context.user.id },
     });
 
+    const businessData = {
+        name: args.name,
+        slug: args.slug,
+        phone: args.phone,
+        imageUrl: args.imageUrl,
+        logoUrl: args.logoUrl,
+        instagramUrl: args.instagramUrl,
+        isInstagramEnabled: args.isInstagramEnabled,
+        tiktokUrl: args.tiktokUrl,
+        isTikTokEnabled: args.isTikTokEnabled,
+        facebookUrl: args.facebookUrl,
+        isFacebookEnabled: args.isFacebookEnabled,
+        websiteUrl: args.websiteUrl,
+        isWebsiteEnabled: args.isWebsiteEnabled,
+        contactEmail: args.contactEmail,
+        isContactEmailEnabled: args.isContactEmailEnabled,
+        isPhoneEnabled: args.isPhoneEnabled,
+    };
+
     if (user?.businessId) {
         // Update existing business
         return await context.entities.Business.update({
             where: { id: user.businessId },
-            data: {
-                name: args.name,
-                slug: args.slug,
-                phone: args.phone,
-                imageUrl: args.imageUrl,
-                logoUrl: args.logoUrl,
-            },
+            data: businessData,
         });
     } else {
         // Create new business and mark user as owner
         const business = await context.entities.Business.create({
             data: {
-                name: args.name,
-                slug: args.slug,
-                phone: args.phone,
-                imageUrl: args.imageUrl,
-                logoUrl: args.logoUrl,
+                ...businessData,
                 users: { connect: { id: context.user.id } }
             },
         });
@@ -138,6 +158,29 @@ export const upsertBusiness: UpsertBusiness<UpsertBusinessArgs, any> = async (ar
     }
 };
 
+type UpdateIntegrationsArgs = {
+    isGoogleCalendarConnected?: boolean;
+    isStripeConnected?: boolean;
+};
+
+export const updateIntegrations: any = async (args: UpdateIntegrationsArgs, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) throw new Error("Business not found");
+
+    return await context.entities.Business.update({
+        where: { id: user.businessId },
+        data: {
+            ...(args.isGoogleCalendarConnected !== undefined && { isGoogleCalendarConnected: args.isGoogleCalendarConnected }),
+            ...(args.isStripeConnected !== undefined && { isStripeConnected: args.isStripeConnected }),
+        }
+    });
+};
+
 type UpdateUserProfileArgs = {
     slug?: string;
     bio?: string;
@@ -147,6 +190,9 @@ type UpdateUserProfileArgs = {
     openingTime?: string;
     closingTime?: string;
     workDays?: string;
+    timezone?: string;
+    bufferBefore?: number;
+    bufferAfter?: number;
 };
 
 export const updateUserProfile: any = async (args: UpdateUserProfileArgs, context: any) => {
@@ -166,6 +212,9 @@ export const updateUserProfile: any = async (args: UpdateUserProfileArgs, contex
             ...(args.openingTime !== undefined && { openingTime: args.openingTime }),
             ...(args.closingTime !== undefined && { closingTime: args.closingTime }),
             ...(args.workDays !== undefined && { workDays: args.workDays }),
+            ...(args.timezone !== undefined && { timezone: args.timezone }),
+            ...(args.bufferBefore !== undefined && { bufferBefore: args.bufferBefore }),
+            ...(args.bufferAfter !== undefined && { bufferAfter: args.bufferAfter }),
         },
     });
 };
@@ -302,6 +351,148 @@ export const deleteService: DeleteService<{ id: string }, any> = async (args, co
     });
 };
 
+export const getSchedule: GetSchedule<void, any> = async (_args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    let schedule = await context.entities.Schedule.findFirst({
+        where: { userId: context.user.id },
+        include: { days: true, overrides: true }
+    });
+
+    if (!schedule) {
+        schedule = await context.entities.Schedule.create({
+            data: {
+                userId: context.user.id,
+                name: "Default Schedule",
+                days: {
+                    createMany: {
+                        data: [
+                            { dayOfWeek: "mon", startTime: "09:00", endTime: "17:00" },
+                            { dayOfWeek: "tue", startTime: "09:00", endTime: "17:00" },
+                            { dayOfWeek: "wed", startTime: "09:00", endTime: "17:00" },
+                            { dayOfWeek: "thu", startTime: "09:00", endTime: "17:00" },
+                            { dayOfWeek: "fri", startTime: "09:00", endTime: "17:00" },
+                        ]
+                    }
+                }
+            },
+            include: { days: true, overrides: true }
+        });
+    }
+    return schedule;
+};
+
+type UpdateScheduleArgs = {
+    scheduleId: string;
+    days: {
+        dayOfWeek: string;
+        startTime: string; // HH:MM
+        endTime: string;   // HH:MM
+    }[];
+};
+
+export const updateSchedule: UpdateSchedule<UpdateScheduleArgs, any> = async (args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const schedule = await context.entities.Schedule.findUnique({
+        where: { id: args.scheduleId },
+    });
+
+    if (!schedule || schedule.userId !== context.user.id) {
+        throw new Error("Schedule not found or access denied");
+    }
+
+    // Replace all days
+    await context.entities.ScheduleDay.deleteMany({
+        where: { scheduleId: args.scheduleId }
+    });
+
+    if (args.days.length > 0) {
+        await context.entities.ScheduleDay.createMany({
+            data: args.days.map(d => ({
+                scheduleId: args.scheduleId,
+                dayOfWeek: d.dayOfWeek,
+                startTime: d.startTime,
+                endTime: d.endTime
+            }))
+        });
+    }
+
+    return await context.entities.Schedule.findUnique({
+        where: { id: args.scheduleId },
+        include: { days: true, overrides: true }
+    });
+};
+
+type UpdateScheduleOverrideArgs = {
+    id?: string;
+    scheduleId: string;
+    dates: string[];
+    isUnavailable: boolean;
+    startTime?: string;
+    endTime?: string;
+    action?: 'upsert' | 'delete';
+};
+
+export const updateScheduleOverride: UpdateScheduleOverride<UpdateScheduleOverrideArgs, any> = async (args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const schedule = await context.entities.Schedule.findUnique({
+        where: { id: args.scheduleId },
+    });
+
+    if (!schedule || schedule.userId !== context.user.id) {
+        throw new Error("Schedule not found or access denied");
+    }
+
+    if (args.action === 'delete' && args.id) {
+        await context.entities.ScheduleOverride.delete({
+            where: { id: args.id }
+        });
+        return { deleted: true };
+    }
+
+    // Upsert logic for multiple dates
+    // For each selected date, we either update an existing override or create a new one.
+    const results: any[] = [];
+    for (const date of args.dates) {
+        // Check if an override already exists for this date and schedule
+        // Note: This relies on the application logic to prevent duplicates if no DB constraint exists.
+        // ideally we would use upsert with a unique compound key, but findFirst works for now.
+        const existing = await context.entities.ScheduleOverride.findFirst({
+            where: {
+                scheduleId: args.scheduleId,
+                date: date
+            }
+        });
+
+        if (existing) {
+            const updated = await context.entities.ScheduleOverride.update({
+                where: { id: existing.id },
+                data: {
+                    isUnavailable: args.isUnavailable,
+                    startTime: args.isUnavailable ? null : args.startTime,
+                    endTime: args.isUnavailable ? null : args.endTime
+                }
+            });
+            results.push(updated);
+        } else {
+            const created = await context.entities.ScheduleOverride.create({
+                data: {
+                    scheduleId: args.scheduleId,
+                    date: date,
+                    isUnavailable: args.isUnavailable,
+                    startTime: args.isUnavailable ? null : args.startTime,
+                    endTime: args.isUnavailable ? null : args.endTime
+                }
+            });
+            results.push(created);
+        }
+    }
+
+    return results;
+};
+
 // Booking Operations
 
 export const getBookingsByBusiness: GetBookingsByBusiness<void, any> = async (_args, context) => {
@@ -330,6 +521,77 @@ export const getBookingsByBusiness: GetBookingsByBusiness<void, any> = async (_a
     return bookings;
 };
 
+export const getBookingsByUser: GetBookingsByUser<void, any> = async (_args, context) => {
+    if (!context.user) {
+        throw new Error("You must be logged in");
+    }
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) {
+        return [];
+    }
+
+    // Get bookings for the current user (staff) within their business
+    const bookings = await context.entities.Booking.findMany({
+        where: {
+            businessId: user.businessId,
+            staffId: context.user.id,
+        },
+        include: {
+            customer: true,
+            service: true,
+            staff: true,
+        },
+        orderBy: { startTimeUtc: "asc" },
+    });
+
+    return bookings;
+};
+
+export const getCalendarBookings: GetCalendarBookings<{ staffId?: string }, any> = async (args, context) => {
+    if (!context.user) {
+        throw new Error("You must be logged in");
+    }
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) {
+        return [];
+    }
+
+    const whereClause: any = {
+        businessId: user.businessId,
+    };
+
+    // If staffId is provided and not 'all', filter by it
+    if (args.staffId && args.staffId !== 'all') {
+        whereClause.staffId = args.staffId;
+    }
+
+    // If no staffId provided, default to current user if not owner? 
+    // The requirement is "options to view business calendar... and options to view calendar for each users".
+    // If filtering is NOT applied (staffId is undefined or 'all'), we show ALL bookings for the business.
+    // However, we should probably restrict this to owners if sensitive? 
+    // For now, let's assume any staff can see the business calendar if requested, or at least owners.
+    // Let's implement it such that 'all' returns all business bookings.
+
+    const bookings = await context.entities.Booking.findMany({
+        where: whereClause,
+        include: {
+            customer: true,
+            service: true,
+            staff: true,
+        },
+        orderBy: { startTimeUtc: "asc" },
+    });
+
+    return bookings;
+};
 
 export const getCustomersByBusiness: GetCustomersByBusiness<void, any> = async (_args, context) => {
     if (!context.user) {
@@ -355,6 +617,15 @@ export const getCustomersByBusiness: GetCustomersByBusiness<void, any> = async (
     const customers = await context.entities.Customer.findMany({
         where: whereClause,
         orderBy: { name: "asc" },
+        include: {
+            bookings: {
+                orderBy: { date: "desc" },
+                take: 1,
+            },
+            _count: {
+                select: { bookings: true },
+            },
+        },
     });
 
     return customers;
@@ -411,10 +682,22 @@ export const createBooking: CreateBooking<CreateBookingArgs, any> = async (args,
                 name: args.clientName,
                 phone: args.clientPhone,
                 email: args.clientEmail,
-                userId: context.user.id, // Assign customer to the staff creating the booking
+                userId: args.staffId, // Assign customer to the staff member being booked
             },
         });
     }
+
+    // Compute UTC timestamps from date and time
+    const [hours, mins] = args.time.split(':').map(Number);
+    const bookingDateObj = new Date(args.date);
+    const startTimeUtc = new Date(Date.UTC(
+        bookingDateObj.getUTCFullYear(),
+        bookingDateObj.getUTCMonth(),
+        bookingDateObj.getUTCDate(),
+        hours,
+        mins
+    ));
+    const endTimeUtc = new Date(startTimeUtc.getTime() + service.duration * 60000);
 
     // Create booking
     const booking = await context.entities.Booking.create({
@@ -424,11 +707,11 @@ export const createBooking: CreateBooking<CreateBookingArgs, any> = async (args,
             serviceId: args.serviceId,
             staffId: args.staffId,
             date: new Date(args.date),
-            startTime: args.time,
-            duration: service.duration,
             price: service.price,
             notes: args.notes,
             status: "confirmed",
+            startTimeUtc,
+            endTimeUtc,
         },
         include: {
             customer: true,
@@ -484,15 +767,41 @@ export const updateBooking: any = async (args: UpdateBookingArgs, context: any) 
 
     // Get new service if serviceId changed
     let price = booking.price;
-    let duration = booking.duration;
+    let newServiceDuration: number | undefined;
     if (args.serviceId && args.serviceId !== booking.serviceId) {
         const newService = await context.entities.Service.findUnique({
             where: { id: args.serviceId },
         });
         if (newService) {
             price = newService.price;
-            duration = newService.duration;
+            newServiceDuration = newService.duration;
         }
+    }
+
+    // Compute new UTC timestamps if date or time changed
+    let startTimeUtc: Date | undefined;
+    let endTimeUtc: Date | undefined;
+    if (args.date || args.time) {
+        const dateToUse = args.date ? new Date(args.date) : booking.date;
+        const timeToUse = args.time || `${booking.startTimeUtc.getUTCHours().toString().padStart(2, '0')}:${booking.startTimeUtc.getUTCMinutes().toString().padStart(2, '0')}`;
+        const [hours, mins] = timeToUse.split(':').map(Number);
+
+        startTimeUtc = new Date(Date.UTC(
+            dateToUse.getUTCFullYear(),
+            dateToUse.getUTCMonth(),
+            dateToUse.getUTCDate(),
+            hours,
+            mins
+        ));
+
+        // Use new service duration if changed, otherwise derive from existing booking
+        const durationMs = newServiceDuration
+            ? newServiceDuration * 60000
+            : (booking.endTimeUtc.getTime() - booking.startTimeUtc.getTime());
+        endTimeUtc = new Date(startTimeUtc.getTime() + durationMs);
+    } else if (newServiceDuration) {
+        // Only service changed, update endTimeUtc based on new duration
+        endTimeUtc = new Date(booking.startTimeUtc.getTime() + newServiceDuration * 60000);
     }
 
     // Update booking
@@ -502,11 +811,11 @@ export const updateBooking: any = async (args: UpdateBookingArgs, context: any) 
             ...(args.serviceId && { serviceId: args.serviceId }),
             ...(args.staffId && { staffId: args.staffId }),
             ...(args.date && { date: new Date(args.date) }),
-            ...(args.time && { startTime: args.time }),
             ...(args.notes !== undefined && { notes: args.notes }),
             ...(args.status && { status: args.status }),
+            ...(startTimeUtc && { startTimeUtc }),
+            ...(endTimeUtc && { endTimeUtc }),
             price,
-            duration,
         },
         include: {
             customer: true,
@@ -538,6 +847,199 @@ export const deleteBooking: any = async (args: { id: string }, context: any) => 
 
     await context.entities.Booking.delete({
         where: { id: args.id },
+    });
+
+    return { success: true };
+};
+
+// Promo Operations
+
+export const getPromosByBusiness: GetPromosByBusiness<void, any> = async (_args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) return [];
+
+    return await context.entities.Promo.findMany({
+        where: { businessId: user.businessId },
+        orderBy: { createdAt: "desc" }
+    });
+};
+
+type CreatePromoArgs = {
+    code: string;
+    type: string; // "percent" | "fixed"
+    value: number;
+};
+
+export const createPromo: CreatePromo<CreatePromoArgs, any> = async (args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) throw new Error("Business not found");
+
+    // Check if code already exists for this business
+    const existing = await context.entities.Promo.findFirst({
+        where: {
+            businessId: user.businessId,
+            code: args.code
+        }
+    });
+
+    if (existing) throw new Error("Promo code already exists");
+
+    return await context.entities.Promo.create({
+        data: {
+            businessId: user.businessId,
+            code: args.code,
+            type: args.type,
+            value: args.value,
+            isActive: true
+        }
+    });
+};
+
+type UpdatePromoArgs = {
+    id: string;
+    isActive: boolean;
+};
+
+export const updatePromo: UpdatePromo<UpdatePromoArgs, any> = async (args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const promo = await context.entities.Promo.findUnique({
+        where: { id: args.id }
+    });
+
+    if (!promo) throw new Error("Promo not found");
+
+    // Verify ownership
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id }
+    });
+
+    if (!user?.businessId || promo.businessId !== user.businessId) {
+        throw new Error("Access denied");
+    }
+
+    return await context.entities.Promo.update({
+        where: { id: args.id },
+        data: { isActive: args.isActive }
+    });
+};
+
+export const deletePromo: DeletePromo<{ id: string }, any> = async (args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const promo = await context.entities.Promo.findUnique({
+        where: { id: args.id }
+    });
+
+    if (!promo) throw new Error("Promo not found");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id }
+    });
+
+    if (!user?.businessId || promo.businessId !== user.businessId) {
+        throw new Error("Access denied");
+    }
+
+    await context.entities.Promo.delete({
+        where: { id: args.id }
+    });
+
+    return { success: true };
+};
+
+// Review Operations
+
+export const getReviewsByBusiness: GetReviewsByBusiness<void, any> = async (_args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+    if (!user?.businessId) return [];
+
+    return await context.entities.Review.findMany({
+        where: { businessId: user.businessId },
+        include: {
+            booking: {
+                include: {
+                    customer: true,
+                    service: true
+                }
+            },
+            user: true // staff member
+        },
+        orderBy: { createdAt: "desc" }
+    });
+};
+
+type CreateReviewArgs = {
+    bookingId: string;
+    rating: number;
+    title?: string;
+    content?: string;
+};
+
+export const createReview: CreateReview<CreateReviewArgs, any> = async (args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+    if (!user?.businessId) throw new Error("Business not found");
+
+    const booking = await context.entities.Booking.findUnique({
+        where: { id: args.bookingId },
+        include: { staff: true }
+    });
+
+    if (!booking) throw new Error("Booking not found");
+
+    // Check if review already exists
+    const existing = await context.entities.Review.findUnique({
+        where: { bookingId: args.bookingId }
+    });
+    if (existing) throw new Error("Review already exists for this booking");
+
+    return await context.entities.Review.create({
+        data: {
+            businessId: user.businessId,
+            bookingId: args.bookingId,
+            rating: args.rating,
+            title: args.title,
+            content: args.content,
+            userId: booking.staffId // Link to the staff member who performed the service
+        }
+    });
+};
+
+export const deleteReview: DeleteReview<{ id: string }, any> = async (args, context) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const review = await context.entities.Review.findUnique({
+        where: { id: args.id }
+    });
+    if (!review) throw new Error("Review not found");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id }
+    });
+
+    if (!user?.businessId || review.businessId !== user.businessId) {
+        throw new Error("Access denied");
+    }
+
+    await context.entities.Review.delete({
+        where: { id: args.id }
     });
 
     return { success: true };

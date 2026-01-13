@@ -30,9 +30,12 @@ model User {
   position           String? // e.g., "Senior Barber"
 
   // Operation Hours
-  openingTime String? // e.g., "09:00"
-  closingTime String? // e.g., "17:00"
-  workDays    String? // Comma-separated days: "mon,tue,wed,thu,fri"
+  openingTime  String? // e.g., "09:00"
+  closingTime  String? // e.g., "17:00"
+  workDays     String? // Comma-separated days: "mon,tue,wed,thu,fri"
+  timezone     String? @default("UTC")
+  bufferBefore Int?    @default(0) // Buffer time in minutes before appointments
+  bufferAfter  Int?    @default(0) // Buffer time in minutes after appointments
 
   contactFormMessages ContactFormMessage[]
   files               File[]               @relation("UserFiles")
@@ -54,6 +57,8 @@ model User {
   customers Customer[]
   services  Service[]
   bookings  Booking[]  @relation("StaffBookings")
+  schedules Schedule[]
+  reviews   Review[]   @relation("StaffReviews")
 }
 
 model File {
@@ -135,6 +140,25 @@ model Business {
   services  Service[]
   customers Customer[]
   bookings  Booking[]
+  promos    Promo[]
+  reviews   Review[]
+
+  // Socials & Contact
+  instagramUrl          String?
+  isInstagramEnabled    Boolean @default(true)
+  tiktokUrl             String?
+  isTikTokEnabled       Boolean @default(true)
+  facebookUrl           String?
+  isFacebookEnabled     Boolean @default(true)
+  websiteUrl            String?
+  isWebsiteEnabled      Boolean @default(true)
+  contactEmail          String?
+  isContactEmailEnabled Boolean @default(true)
+  isPhoneEnabled        Boolean @default(true)
+
+  // Integrations
+  isGoogleCalendarConnected Boolean @default(false)
+  isStripeConnected         Boolean @default(false)
 }
 
 model Service {
@@ -192,10 +216,73 @@ model Booking {
   staff   User   @relation("StaffBookings", fields: [staffId], references: [id])
   staffId String
 
-  date      DateTime
-  startTime String // "09:00" format
-  duration  Int // in minutes
-  status    String   @default("confirmed") // confirmed, pending, cancelled
-  notes     String?
-  price     Float
+  date         DateTime
+  startTimeUtc DateTime // Full UTC timestamp for the booking start
+  endTimeUtc   DateTime // Full UTC timestamp for the booking end
+  status       String   @default("confirmed") // confirmed, pending, cancelled
+  notes        String?
+  price        Float
+
+  review Review?
+}
+
+model Schedule {
+  id        String             @id @default(uuid())
+  user      User               @relation(fields: [userId], references: [id])
+  userId    String
+  name      String             @default("Default Schedule")
+  days      ScheduleDay[]
+  overrides ScheduleOverride[]
+}
+
+model ScheduleDay {
+  id         String   @id @default(uuid())
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduleId String
+  dayOfWeek  String // "monday", "tuesday", etc.
+  startTime  String // "09:00"
+  endTime    String // "17:00"
+}
+
+model ScheduleOverride {
+  id            String   @id @default(uuid())
+  schedule      Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduleId    String
+  date          String // "YYYY-MM-DD"
+  isUnavailable Boolean  @default(false)
+  startTime     String?
+  endTime       String?
+}
+
+model Promo {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  code     String
+  isActive Boolean @default(true)
+
+  type  String // "percent" or "fixed"
+  value Float
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  rating  Int // 1 to 5
+  title   String?
+  content String?
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  bookingId String  @unique // One review per booking
+  booking   Booking @relation(fields: [bookingId], references: [id])
+
+  userId String?
+  user   User?   @relation("StaffReviews", fields: [userId], references: [id]) // Staff member being reviewed
 }

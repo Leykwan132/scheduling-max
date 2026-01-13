@@ -20,7 +20,7 @@ export default function CalendarHeader({
     onViewChange
 }: CalendarHeaderProps) {
     return (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 bg-background border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-background border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] sm:h-[98px]">
             <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
                 <div className="flex items-center gap-1">
                     <button

@@ -30,7 +30,8 @@ export default function App() {
     return (
       location.pathname !== routes.LoginRoute.build() &&
       location.pathname !== routes.SignupRoute.build() &&
-      !location.pathname.startsWith("/app")
+      !location.pathname.startsWith("/app") &&
+      !location.pathname.startsWith("/book")
     );
   }, [location]);
 

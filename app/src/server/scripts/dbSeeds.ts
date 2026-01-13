@@ -70,6 +70,9 @@ function generateMockUserData(): MockUserData {
     websiteUrl: null,
     publicEmail: null,
     publicPhone: null,
+    timezone: "UTC",
+    bufferBefore: 0,
+    bufferAfter: 0,
   };
 }
 
@@ -241,10 +244,10 @@ export async function seedBookingData(prismaClient: PrismaClient) {
       serviceId: string;
       staffId: string;
       date: Date;
-      startTime: string;
-      duration: number;
       price: number;
       status: string;
+      startTimeUtc: Date;
+      endTimeUtc: Date;
     }[] = [];
 
     // Generate 7-8 bookings per day for the month
@@ -266,16 +269,28 @@ export async function seedBookingData(prismaClient: PrismaClient) {
           { value: "pending", weight: 2 },
         ]);
 
+        // Compute UTC timestamps from date and time
+        const [hours, mins] = time.split(':').map(Number);
+        const bookingDay = new Date(day);
+        const startTimeUtc = new Date(Date.UTC(
+          bookingDay.getFullYear(),
+          bookingDay.getMonth(),
+          bookingDay.getDate(),
+          hours,
+          mins
+        ));
+        const endTimeUtc = new Date(startTimeUtc.getTime() + service.duration * 60000);
+
         bookings.push({
           businessId: business!.id,
           customerId: customer.id,
           serviceId: service.id,
           staffId: demoUser!.id, // Use demo user as staff
           date: new Date(day),
-          startTime: time,
-          duration: service.duration,
           price: service.price,
           status,
+          startTimeUtc,
+          endTimeUtc,
         });
       }
     }

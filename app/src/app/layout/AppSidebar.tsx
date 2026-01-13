@@ -12,12 +12,13 @@ import {
     Package,
     Users,
     Tag,
-    DollarSign,
     Settings,
-    TrendingUp,
     ChevronDown,
     ChevronRight,
-    ClipboardList
+    ClipboardList,
+    Building2,
+    Star,
+    LayoutList
 } from "lucide-react";
 import { useAuth, logout } from "wasp/client/auth";
 import logo from "../../client/static/logo.webp";
@@ -71,6 +72,11 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                     href: "/app",
                     icon: Home,
                 },
+                {
+                    name: "Calendar",
+                    href: "/app/calendar",
+                    icon: Calendar,
+                },
             ],
         },
         {
@@ -78,24 +84,14 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
             label: "Operations",
             items: [
                 {
-                    name: "Calendar",
-                    href: "/app/calendar",
-                    icon: Calendar,
-                },
-                {
-                    name: "Business Setup",
+                    name: "Business",
                     href: "/app/setup",
-                    icon: Settings,
+                    icon: Building2,
                 },
                 {
                     name: "Bookings",
                     href: "/app/bookings",
                     icon: ClipboardList,
-                },
-                {
-                    name: "Customers",
-                    href: "/app/clients",
-                    icon: Users,
                 },
             ],
         },
@@ -104,32 +100,32 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
             label: "Marketing",
             items: [
                 {
+                    name: "Customers",
+                    href: "/app/clients",
+                    icon: Users,
+                },
+                {
                     name: "Promos",
                     href: "/app/promos",
                     icon: Tag,
                 },
-            ],
-        },
-        {
-            key: "business",
-            label: "Finances",
-            items: [
                 {
-                    name: "Transactions",
-                    href: "/app/finances",
-                    icon: DollarSign,
-                },
-                {
-                    name: "Insights",
-                    href: "/app/insights",
-                    icon: TrendingUp,
+                    name: "Reviews",
+                    href: "/app/reviews",
+                    icon: Star,
                 },
             ],
         },
+
         {
             key: "settings",
             label: "Settings",
             items: [
+                {
+                    name: "Integrations",
+                    href: "/app/integrations",
+                    icon: ClipboardList, // Using ClipboardList or Blocks/Zap if imported
+                },
                 {
                     name: "Team & Spots",
                     href: "/app/team",

@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import DashboardLayout from "../layout/DashboardLayout";
-import { Plus } from "lucide-react";
+import { Plus, ChevronDown, Check } from "lucide-react";
 import { format, isSameDay } from "date-fns";
 import { useQuery } from "wasp/client/operations";
 import { useAuth } from "wasp/client/auth";
-import { getBookingsByBusiness, getServicesByBusinessAndUserId, getBusinessByUser } from "wasp/client/operations";
+import { getCalendarBookings, getServicesByBusinessAndUserId, getBusinessByUser, getCustomersByBusiness } from "wasp/client/operations";
 import { createBooking, updateBooking, deleteBooking } from "wasp/client/operations";
 import CalendarHeader from "./CalendarHeader";
 import MonthView from "./MonthView";
@@ -24,27 +24,51 @@ export default function CalendarPage() {
     const [editingBooking, setEditingBooking] = useState<any | null>(null);
     const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' }>>([]);
 
+    // Filter State
+    const [selectedStaffId, setSelectedStaffId] = useState<string>('all');
+
     // Fetch data from database
     const { data: shop } = useQuery(getBusinessByUser);
-    const { data: bookingsData, refetch: refetchBookings } = useQuery(getBookingsByBusiness);
     const { data: user } = useAuth();
-    const { data: servicesData } = useQuery(getServicesByBusinessAndUserId, shop?.id && user?.id ? { businessId: shop.id, userId: user.id } : undefined, { enabled: !!shop?.id && !!user?.id });
+
+    // Fetch bookings based on filter
+    const { data: bookingsData, refetch: refetchBookings } = useQuery(
+        getCalendarBookings,
+        { staffId: selectedStaffId }
+    );
+
+    const { data: servicesData } = useQuery(
+        getServicesByBusinessAndUserId,
+        shop?.id && user?.id ? { businessId: shop.id, userId: user.id } : undefined,
+        { enabled: !!shop?.id && !!user?.id }
+    );
+    const { data: customers } = useQuery(getCustomersByBusiness);
 
     // Transform bookings data for calendar display
     const appointments = (bookingsData || [])
         .filter((booking: any) => booking.status !== 'cancelled')
-        .map((booking: any) => ({
-            id: booking.id,
-            time: booking.startTime,
-            client: booking.customer?.name || "Unknown",
-            service: booking.service?.name || "Unknown Service",
-            staff: booking.staff?.username || "Unassigned",
-            duration: `${booking.duration}m`,
-            status: booking.status,
-            phone: booking.customer?.phone || "",
-            date: new Date(booking.date),
-            price: booking.price,
-        }));
+        .map((booking: any) => {
+            // Derive time from startTimeUtc
+            const startUtc = new Date(booking.startTimeUtc);
+            const time = `${startUtc.getUTCHours().toString().padStart(2, '0')}:${startUtc.getUTCMinutes().toString().padStart(2, '0')}`;
+
+            // Derive duration from difference between endTimeUtc and startTimeUtc
+            const endUtc = new Date(booking.endTimeUtc);
+            const durationMinutes = Math.round((endUtc.getTime() - startUtc.getTime()) / 60000);
+
+            return {
+                id: booking.id,
+                time,
+                client: booking.customer?.name || "Unknown",
+                service: booking.service?.name || "Unknown Service",
+                staff: booking.staff?.username || "Unassigned",
+                duration: `${durationMinutes}m`,
+                status: booking.status,
+                phone: booking.customer?.phone || "",
+                date: new Date(booking.date),
+                price: booking.price,
+            };
+        });
 
     const handlePrev = () => {
         if (view === 'month') {
@@ -182,12 +206,16 @@ export default function CalendarPage() {
             // Find the full booking data from bookingsData
             const fullBooking = bookingsData?.find((b: any) => b.id === selectedAppointment.id);
             if (fullBooking) {
+                // Derive time from startTimeUtc
+                const startUtc = new Date(fullBooking.startTimeUtc);
+                const time = `${startUtc.getUTCHours().toString().padStart(2, '0')}:${startUtc.getUTCMinutes().toString().padStart(2, '0')}`;
+
                 setEditingBooking({
                     id: fullBooking.id,
                     clientName: fullBooking.customer.name,
                     clientPhone: fullBooking.customer.phone,
                     date: format(new Date(fullBooking.date), 'yyyy-MM-dd'),
-                    time: fullBooking.startTime,
+                    time,
                     serviceId: fullBooking.serviceId,
                     staffId: fullBooking.staffId,
                     notes: fullBooking.notes || ""
@@ -220,7 +248,7 @@ export default function CalendarPage() {
         <DashboardLayout>
             <div className="w-full h-[calc(100vh-100px)] flex flex-col">
                 {/* Page Header */}
-                <div className="flex items-center justify-between mb-6 flex-shrink-0">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 flex-shrink-0 gap-4">
                     <div>
                         <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tight">
                             Calendar
@@ -229,22 +257,41 @@ export default function CalendarPage() {
                             Manage your appointments and schedule.
                         </p>
                     </div>
-                    <button
-                        onClick={() => {
-                            setEditingBooking(null);
-                            setShowNewBookingModal(true);
-                        }}
-                        className="bg-primary text-black px-4 py-2.5 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all flex items-center gap-2 font-black text-sm uppercase"
-                    >
-                        <Plus className="size-4" />
-                        <span className="hidden sm:inline">New Booking</span>
-                        <span className="sm:hidden">New</span>
-                    </button>
+
+                    <div className="flex items-center gap-4">
+                        <div className="relative group">
+                            <select
+                                value={selectedStaffId}
+                                onChange={(e) => setSelectedStaffId(e.target.value)}
+                                className="appearance-none bg-background text-foreground border-2 border-black px-4 py-2.5 pr-10 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all font-bold text-sm uppercase outline-none cursor-pointer min-w-[200px]"
+                            >
+                                <option value="all">Business Calendar (All)</option>
+                                {shop?.users?.map((u: any) => (
+                                    <option key={u.id} value={u.id}>
+                                        {u.username}'s Calendar
+                                    </option>
+                                ))}
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none size-4" />
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                setEditingBooking(null);
+                                setShowNewBookingModal(true);
+                            }}
+                            className="bg-primary text-black px-4 py-2.5 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all flex items-center gap-2 font-black text-sm uppercase"
+                        >
+                            <Plus className="size-4" />
+                            <span className="hidden sm:inline">New Booking</span>
+                            <span className="sm:hidden">New</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex flex-col xl:flex-row h-full gap-6 min-h-0">
                     {/* Left Side: Calendar Grid */}
-                    <div className="flex-1 flex flex-col min-h-0">
+                    <div className="flex-1 flex flex-col min-h-0 gap-6">
                         {/* Calendar Controls */}
                         <CalendarHeader
                             currentDate={currentDate}
@@ -276,8 +323,8 @@ export default function CalendarPage() {
                     </div>
 
                     {/* Right Side: Today's Quick View */}
-                    <div className="w-full xl:w-80 flex-shrink-0 flex flex-col gap-4">
-                        <div className="bg-blue-400 border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="w-full xl:w-80 flex-shrink-0 flex flex-col gap-6">
+                        <div className="bg-blue-400 border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] sm:h-[98px] flex flex-col justify-center">
                             <h2 className="text-xl font-black uppercase tracking-tight mb-1">Today's Quick View</h2>
                             <p className="text-sm font-bold opacity-80">{format(new Date(), 'EEEE, MMM do')}</p>
                         </div>
@@ -347,7 +394,8 @@ export default function CalendarPage() {
             {showNewBookingModal && (
                 <NewBookingModal
                     services={servicesData || []}
-                    staff={[]}
+                    staff={shop?.users?.map((u: any) => ({ id: u.id, name: u.username })) || []}
+                    customers={customers || []}
                     onClose={() => {
                         setShowNewBookingModal(false);
                         setEditingBooking(null);

@@ -167,6 +167,12 @@ page SettingsPage {
   component: import SettingsPage from "@src/app/settings/SettingsPage"
 }
 
+route IntegrationsRoute { path: "/app/integrations", to: IntegrationsPage }
+page IntegrationsPage {
+  authRequired: true,
+  component: import IntegrationsPage from "@src/app/integrations/IntegrationsPage"
+}
+
 route CalendarRoute { path: "/app/calendar", to: CalendarPage }
 page CalendarPage {
   authRequired: true,
@@ -197,11 +203,13 @@ page PromosPage {
   component: import PromosPage from "@src/app/promos/PromosPage"
 }
 
-route FinancesRoute { path: "/app/finances", to: FinancesPage }
-page FinancesPage {
+route ReviewsRoute { path: "/app/reviews", to: ReviewsPage }
+page ReviewsPage {
   authRequired: true,
-  component: import FinancesPage from "@src/app/finances/FinancesPage"
+  component: import ReviewsPage from "@src/app/reviews/ReviewsPage"
 }
+
+
 
 route TeamRoute { path: "/app/team", to: TeamPage }
 page TeamPage {
@@ -209,11 +217,7 @@ page TeamPage {
   component: import TeamPage from "@src/app/team/TeamPage"
 }
 
-route InsightsRoute { path: "/app/insights", to: InsightsPage }
-page InsightsPage {
-  authRequired: true,
-  component: import InsightsPage from "@src/app/insights/InsightsPage"
-}
+
 
 query getBusinessByUser {
   fn: import { getBusinessByUser } from "@src/app/operations",
@@ -227,6 +231,11 @@ query getServicesByBusinessAndUserId {
 
 action upsertBusiness {
   fn: import { upsertBusiness } from "@src/app/operations",
+  entities: [Business, User]
+}
+
+action updateIntegrations {
+  fn: import { updateIntegrations } from "@src/app/operations",
   entities: [Business, User]
 }
 
@@ -255,11 +264,36 @@ action deleteService {
   entities: [Service, User]
 }
 
+query getSchedule {
+  fn: import { getSchedule } from "@src/app/operations",
+  entities: [Schedule, ScheduleDay, ScheduleOverride, User]
+}
+
+action updateSchedule {
+  fn: import { updateSchedule } from "@src/app/operations",
+  entities: [Schedule, ScheduleDay, User]
+}
+
+action updateScheduleOverride {
+  fn: import { updateScheduleOverride } from "@src/app/operations",
+  entities: [Schedule, ScheduleOverride, User]
+}
+
 query getBookingsByBusiness {
   fn: import { getBookingsByBusiness } from "@src/app/operations",
   entities: [Booking, Business, Customer, Service, User]
 }
 
+query getBookingsByUser {
+  fn: import { getBookingsByUser } from "@src/app/operations",
+  entities: [Booking, Business, Customer, Service, User]
+}
+
+
+query getCalendarBookings {
+  fn: import { getCalendarBookings } from "@src/app/operations",
+  entities: [Booking, Business, User, Customer, Service]
+}
 
 query getCustomersByBusiness {
   fn: import { getCustomersByBusiness } from "@src/app/operations",
@@ -281,6 +315,45 @@ action deleteBooking {
   fn: import { deleteBooking } from "@src/app/operations",
   entities: [Booking, Business, User]
 }
+
+//#region Promos
+query getPromosByBusiness {
+  fn: import { getPromosByBusiness } from "@src/app/operations",
+  entities: [Promo, Business, User]
+}
+
+action createPromo {
+  fn: import { createPromo } from "@src/app/operations",
+  entities: [Promo, Business, User]
+}
+
+action updatePromo {
+  fn: import { updatePromo } from "@src/app/operations",
+  entities: [Promo, Business, User]
+}
+
+action deletePromo {
+  fn: import { deletePromo } from "@src/app/operations",
+  entities: [Promo, Business, User]
+}
+//#endregion
+
+//#region Reviews
+query getReviewsByBusiness {
+  fn: import { getReviewsByBusiness } from "@src/app/operations",
+  entities: [Review, Business, User, Booking]
+}
+
+action createReview {
+  fn: import { createReview } from "@src/app/operations",
+  entities: [Review, Business, User, Booking]
+}
+
+action deleteReview {
+  fn: import { deleteReview } from "@src/app/operations",
+  entities: [Review, Business, User]
+}
+//#endregion
 //#endregion
 
 //#region Public Booking
@@ -296,7 +369,7 @@ query getUserBySlug {
 
 query getAvailableSlots {
   fn: import { getAvailableSlots } from "@src/booking/operations",
-  entities: [User, Booking]
+  entities: [User, Booking, Schedule, ScheduleDay, ScheduleOverride, Service]
 }
 
 action createPublicBooking {

@@ -1,9 +1,28 @@
 import { useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, getUserBySlug, getAvailableSlots, createPublicBooking } from "wasp/client/operations";
-import { Phone, Clock, DollarSign, ArrowLeft, Calendar as CalendarIcon, X, CheckCircle, Instagram, Facebook, Globe, Mail } from "lucide-react";
-import { format, addDays, startOfDay } from "date-fns";
+import { Phone, Clock, DollarSign, ArrowLeft, Calendar as CalendarIcon, X, CheckCircle, Instagram, Facebook, Globe, Mail, MapPin } from "lucide-react";
+import { format, startOfDay } from "date-fns";
 import { cn } from "../client/utils";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/style.css";
+
+// Get visitor's timezone
+const getVisitorTimezone = (): string => {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+        return "UTC";
+    }
+};
+
+// Format time with AM/PM
+const formatTimeWithAMPM = (time: string) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+};
 
 export default function BookingPage() {
     const { slug } = useParams<{ slug: string }>();
@@ -14,6 +33,9 @@ export default function BookingPage() {
     const [selectedTime, setSelectedTime] = useState<string | null>(null);
     const [bookingStep, setBookingStep] = useState<'time' | 'details' | 'success'>('time');
 
+    // Auto-detect visitor's timezone
+    const visitorTimezone = useMemo(() => getVisitorTimezone(), []);
+
     const [formData, setFormData] = useState({
         name: "",
         phone: "",
@@ -21,10 +43,20 @@ export default function BookingPage() {
         notes: ""
     });
 
-    const { data: availableSlots, isLoading: isLoadingSlots } = useQuery(
+    const { data: availableSlots, isLoading: isLoadingSlots, refetch: refetchSlots } = useQuery(
         getAvailableSlots,
-        { slug: slug || "", date: format(selectedDate, 'yyyy-MM-dd') },
-        { enabled: !!selectedService && bookingStep === 'time' }
+        {
+            slug: slug || "",
+            date: format(selectedDate, 'yyyy-MM-dd'),
+            visitorTimezone,
+            serviceId: selectedService?.id
+        },
+        {
+            enabled: !!selectedService && bookingStep === 'time',
+            // Refetch when date changes to ensure fresh data
+            refetchOnMount: 'always',
+            staleTime: 0,
+        }
     );
 
     if (isLoading) {
@@ -81,7 +113,8 @@ export default function BookingPage() {
                 clientName: formData.name,
                 clientPhone: formData.phone,
                 clientEmail: formData.email,
-                notes: formData.notes
+                notes: formData.notes,
+                visitorTimezone
             });
             setBookingStep('success');
         } catch (err: any) {
@@ -89,7 +122,7 @@ export default function BookingPage() {
         }
     };
 
-    const next7Days = Array.from({ length: 7 }, (_, i) => addDays(startOfDay(new Date()), i));
+
 
     return (
         <div className="min-h-screen bg-[#FDFDFD] pb-32">
@@ -118,38 +151,38 @@ export default function BookingPage() {
                             )}
 
                             <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
-                                {user.igUrl && (
-                                    <a href={user.igUrl} target="_blank" rel="noopener noreferrer"
+                                {business?.instagramUrl && business.isInstagramEnabled && (
+                                    <a href={business.instagramUrl.startsWith('http') ? business.instagramUrl : `https://${business.instagramUrl}`} target="_blank" rel="noopener noreferrer"
                                         className="p-3 bg-white border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all">
                                         <Instagram className="size-5" />
                                     </a>
                                 )}
-                                {user.tiktokUrl && (
-                                    <a href={user.tiktokUrl} target="_blank" rel="noopener noreferrer"
+                                {business?.tiktokUrl && business.isTikTokEnabled && (
+                                    <a href={business.tiktokUrl.startsWith('http') ? business.tiktokUrl : `https://${business.tiktokUrl}`} target="_blank" rel="noopener noreferrer"
                                         className="p-3 bg-white border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all">
                                         <div className="size-5 flex items-center justify-center font-black text-[10px]">TT</div>
                                     </a>
                                 )}
-                                {user.facebookUrl && (
-                                    <a href={user.facebookUrl} target="_blank" rel="noopener noreferrer"
+                                {business?.facebookUrl && business.isFacebookEnabled && (
+                                    <a href={business.facebookUrl.startsWith('http') ? business.facebookUrl : `https://${business.facebookUrl}`} target="_blank" rel="noopener noreferrer"
                                         className="p-3 bg-white border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all">
                                         <Facebook className="size-5" />
                                     </a>
                                 )}
-                                {user.websiteUrl && (
-                                    <a href={user.websiteUrl} target="_blank" rel="noopener noreferrer"
+                                {business?.websiteUrl && business.isWebsiteEnabled && (
+                                    <a href={business.websiteUrl.startsWith('http') ? business.websiteUrl : `https://${business.websiteUrl}`} target="_blank" rel="noopener noreferrer"
                                         className="p-3 bg-white border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all">
                                         <Globe className="size-5" />
                                     </a>
                                 )}
-                                {(user.publicPhone || (user.business && user.business.phone)) && (
-                                    <a href={`tel:${(user.publicPhone || user.business.phone).replace(/\D/g, "")}`}
+                                {business?.phone && business.isPhoneEnabled && (
+                                    <a href={`tel:${business.phone.replace(/\D/g, "")}`}
                                         className="p-3 bg-white border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all">
                                         <Phone className="size-5" />
                                     </a>
                                 )}
-                                {user.publicEmail && (
-                                    <a href={`mailto:${user.publicEmail}`}
+                                {business?.contactEmail && business.isContactEmailEnabled && (
+                                    <a href={`mailto:${business.contactEmail}`}
                                         className="p-3 bg-white border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all">
                                         <Mail className="size-5" />
                                     </a>
@@ -171,43 +204,41 @@ export default function BookingPage() {
                         <div className="h-1 flex-1 bg-black/10" />
                     </div>
 
-                    <div className="grid gap-6">
+                    <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-stretch">
                         {services.length > 0 ? (
                             services.map((service: any) => (
                                 <div
                                     key={service.id}
-                                    className="group relative bg-white border-4 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all cursor-pointer"
+                                    className="group relative bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all cursor-pointer flex flex-col h-full"
                                     onClick={() => handleBookService(service)}
                                 >
-                                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                        <div className="flex-1">
-                                            <div className="flex items-start justify-between gap-4 mb-3">
-                                                <h3 className="text-xl md:text-2xl font-black uppercase group-hover:text-primary transition-colors leading-tight">
-                                                    {service.name}
-                                                </h3>
-                                                <div className="flex-shrink-0">
-                                                    <span className="inline-block text-2xl font-black italic tracking-tighter bg-primary text-black px-4 py-1.5 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -rotate-3 group-hover:rotate-0 transition-transform duration-200">
-                                                        ${service.price.toFixed(2)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4 text-sm font-black uppercase tracking-widest">
-                                                <span className="flex items-center gap-2 bg-primary/20 text-black px-4 py-2 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <Clock className="w-5 h-5 stroke-[3]" /> {service.duration} MIN
-                                                </span>
-                                            </div>
-                                            {service.description && (
-                                                <p className="text-black/60 font-bold text-xs mt-4 leading-relaxed max-w-md">{service.description}</p>
-                                            )}
+                                    <div className="absolute top-0 right-0 bg-primary text-black border-l-4 border-b-4 border-black px-3 py-1 font-black z-10 text-xs uppercase tracking-wider">
+                                        {service.duration} MIN
+                                    </div>
+
+                                    <div className="p-6 pb-2 flex-grow">
+                                        <h3 className="text-2xl md:text-3xl font-black uppercase leading-8 mb-3 break-words hyphens-auto group-hover:text-primary transition-colors">
+                                            {service.name}
+                                        </h3>
+                                        <div className="text-xl font-black italic tracking-tighter text-black/40 mb-4">
+                                            ${service.price.toFixed(2)}
                                         </div>
-                                        <div className="bg-black text-white px-6 py-4 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-3 group-hover:bg-primary group-hover:text-black transition-colors border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1">
+                                        {service.description && (
+                                            <p className="text-sm font-bold text-gray-600 leading-relaxed line-clamp-4">
+                                                {service.description}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="p-6 pt-0 mt-auto">
+                                        <button className="w-full bg-black text-white border-2 border-transparent py-4 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 group-hover:bg-primary group-hover:text-black group-hover:border-black transition-all">
                                             Book Now <ArrowLeft className="w-4 h-4 rotate-180" />
-                                        </div>
+                                        </button>
                                     </div>
                                 </div>
                             ))
                         ) : (
-                            <div className="border-4 border-black border-dashed p-12 text-center text-black/40 font-black uppercase tracking-widest">
+                            <div className="col-span-full border-4 border-black border-dashed p-12 text-center text-black/40 font-black uppercase tracking-widest">
                                 No services available at this time.
                             </div>
                         )}
@@ -243,31 +274,52 @@ export default function BookingPage() {
                                     {/* Date Selection */}
                                     <div>
                                         <label className="text-xs font-black uppercase tracking-widest text-black mb-4 block underline decoration-primary decoration-4 underline-offset-4">Select Date</label>
-                                        <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-                                            {next7Days.map((date) => (
-                                                <button
-                                                    key={date.toISOString()}
-                                                    onClick={() => { setSelectedDate(date); setSelectedTime(null); }}
-                                                    className={cn(
-                                                        "flex-shrink-0 w-16 h-20 flex flex-col items-center justify-center border-4 border-black transition-all",
-                                                        format(selectedDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd')
-                                                            ? "bg-primary shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] scale-105"
-                                                            : "bg-white hover:bg-neutral-50 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                                                    )}
-                                                >
-                                                    <span className="text-[10px] uppercase font-black">{format(date, 'EEE')}</span>
-                                                    <span className="text-xl font-black tracking-tighter">{format(date, 'dd')}</span>
-                                                </button>
-                                            ))}
+                                        <div className="flex flex-col items-center w-full">
+                                            <div className="border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white">
+                                                <DayPicker
+                                                    mode="single"
+                                                    selected={selectedDate}
+                                                    onSelect={(date) => {
+                                                        if (date) {
+                                                            setSelectedDate(date);
+                                                            setSelectedTime(null);
+                                                        }
+                                                    }}
+                                                    disabled={{ before: startOfDay(new Date()) }}
+                                                    classNames={{
+                                                        chevron: "fill-black",
+                                                        day: "p-1",
+                                                    }}
+                                                    modifiersClassNames={{
+                                                        disabled: "bg-gray-200 text-gray-400 opacity-50 cursor-not-allowed",
+                                                        selected: "bg-primary text-black border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] font-bold rounded-none hover:bg-primary hover:text-black focus:bg-primary focus:text-black active:bg-primary active:text-black",
+                                                        today: "font-black underline decoration-2 underline-offset-4 decoration-black",
+                                                    }}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 
                                     {/* Time Slots */}
                                     <div>
-                                        <label className="text-xs font-black uppercase tracking-widest text-black mb-4 block underline decoration-primary decoration-4 underline-offset-4">Select Time</label>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <label className="text-xs font-black uppercase tracking-widest text-black underline decoration-primary decoration-4 underline-offset-4">Select Time</label>
+                                            <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 border border-black/20 rounded text-[10px] font-bold text-gray-600">
+                                                <MapPin className="size-3" />
+                                                <span>{visitorTimezone.replace(/_/g, ' ')}</span>
+                                            </div>
+                                        </div>
                                         {isLoadingSlots ? (
-                                            <div className="grid grid-cols-3 gap-3">
-                                                {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-12 bg-neutral-100 border-2 border-black animate-pulse" />)}
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-center gap-2 py-4">
+                                                    <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                                                    <span className="text-xs font-bold uppercase tracking-widest text-gray-600">
+                                                        Fetching availability...
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-12 bg-neutral-100 border-2 border-black animate-pulse" />)}
+                                                </div>
                                             </div>
                                         ) : availableSlots && availableSlots.length > 0 ? (
                                             <div className="grid grid-cols-3 gap-3">
@@ -282,7 +334,7 @@ export default function BookingPage() {
                                                                 : "bg-white hover:bg-primary transition-colors text-black"
                                                         )}
                                                     >
-                                                        {time}
+                                                        {formatTimeWithAMPM(time)}
                                                     </button>
                                                 ))}
                                             </div>
@@ -304,7 +356,7 @@ export default function BookingPage() {
                                             </div>
                                             <div>
                                                 <p className="text-xs font-black uppercase">{format(selectedDate, 'MMM d, yyyy')}</p>
-                                                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">AT {selectedTime}</p>
+                                                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">AT {selectedTime && formatTimeWithAMPM(selectedTime)}</p>
                                             </div>
                                         </div>
                                         <button
@@ -372,7 +424,7 @@ export default function BookingPage() {
                                     </div>
                                     <h3 className="text-3xl font-black uppercase italic tracking-tighter">Booking Confirmed</h3>
                                     <p className="text-black font-bold text-sm leading-relaxed max-w-xs mx-auto uppercase">
-                                        All set! See you on <span className="bg-primary/30 px-1">{format(selectedDate, 'MMM d')}</span> at <span className="bg-primary/30 px-1">{selectedTime}</span>.
+                                        All set! See you on <span className="bg-primary/30 px-1">{format(selectedDate, 'MMM d')}</span> at <span className="bg-primary/30 px-1">{selectedTime && formatTimeWithAMPM(selectedTime)}</span>.
                                     </p>
                                     <div className="pt-8">
                                         <button
@@ -395,7 +447,7 @@ export default function BookingPage() {
                                         onClick={handleConfirmTime}
                                         className="w-full py-5 bg-black text-white border-4 border-black font-black uppercase tracking-widest shadow-[8px_8px_0px_0px_rgba(312,100,78,0.5)] disabled:bg-neutral-300 disabled:border-neutral-400 disabled:shadow-none disabled:text-neutral-500 transition-all active:translate-y-1 active:translate-x-1 active:shadow-none"
                                     >
-                                        Final Details
+                                        Next
                                     </button>
                                 )}
                                 {bookingStep === 'details' && (
