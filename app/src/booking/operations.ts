@@ -2,6 +2,7 @@ import type { GetUserBySlug, GetAvailableSlots, CreatePublicBooking } from "wasp
 import { HttpError } from "wasp/server";
 import { getDownloadFileSignedURLFromS3 } from "../file-upload/s3Utils";
 import { availableSlotsForWindow, type TimeRange } from "../utils/availableSlots";
+import { createGoogleCalendarEvent, formatBookingForCalendar } from "../server/integrations/googleCalendar";
 
 export const getUserBySlug: GetUserBySlug<{ slug: string }, any> = async (args, context) => {
     const user = await context.entities.User.findUnique({
@@ -438,7 +439,7 @@ export const createPublicBooking: CreatePublicBooking<CreatePublicBookingArgs, a
     const endTimeUtc = new Date(startTimeUtc.getTime() + service.duration * 60000);
 
     // Create Booking
-    const booking = await context.entities.Booking.create({
+    let booking = await context.entities.Booking.create({
         data: {
             businessId: user.businessId,
             customerId: customer.id,
@@ -454,6 +455,31 @@ export const createPublicBooking: CreatePublicBooking<CreatePublicBookingArgs, a
     });
 
     console.log("[createPublicBooking] Created booking:", booking.id);
+
+    // Sync to Google Calendar if staff has connected
+    if (user.googRefreshToken) {
+        try {
+            const eventData = formatBookingForCalendar({
+                service,
+                customer,
+                startTimeUtc,
+                endTimeUtc,
+                notes,
+                price: service.price,
+            });
+            const eventId = await createGoogleCalendarEvent(user.googRefreshToken, eventData);
+
+            if (eventId) {
+                booking = await context.entities.Booking.update({
+                    where: { id: booking.id },
+                    data: { googleCalendarEventId: eventId },
+                });
+                console.log("[createPublicBooking] Synced to Google Calendar:", eventId);
+            }
+        } catch (error) {
+            console.error('[createPublicBooking] Failed to sync to Google Calendar:', error);
+        }
+    }
 
     return booking;
 };

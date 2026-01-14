@@ -13,6 +13,11 @@ interface Appointment {
     date: Date;
     staff?: string;
     phone?: string;
+    colors?: {
+        bg: string;
+        border: string;
+        text: string;
+    };
 }
 
 interface BookingPopupProps {
@@ -151,7 +156,7 @@ export default function BookingPopup({ appointment, position, onClose, onEdit, o
             {/* Popup Header */}
             <div className={cn(
                 "px-4 py-3 border-b-2 border-black flex items-center justify-between",
-                appointment.status === 'confirmed' ? "bg-green-200" : "bg-yellow-200"
+                appointment.colors?.bg || "bg-primary"
             )}>
                 <span className="font-black uppercase text-sm">Booking Details</span>
                 <button
@@ -213,7 +218,7 @@ export default function BookingPopup({ appointment, position, onClose, onEdit, o
                 <div className="pt-2">
                     <span className={cn(
                         "text-xs font-black uppercase px-2 py-1 border-2 border-black",
-                        appointment.status === 'confirmed' ? "bg-green-200" : "bg-yellow-200"
+                        appointment.colors?.bg || "bg-primary"
                     )}>
                         {appointment.status}
                     </span>
@@ -221,30 +226,7 @@ export default function BookingPopup({ appointment, position, onClose, onEdit, o
             </div>
 
             {/* Action Button */}
-            {appointment.status === 'pending' && onConfirm ? (
-                <div className="p-3 border-t-2 border-black">
-                    <button
-                        onClick={handleConfirm}
-                        disabled={isConfirming}
-                        className={cn(
-                            "w-full bg-green-500 text-white px-4 py-2 border-2 border-black font-black text-sm uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all flex items-center justify-center gap-2",
-                            isConfirming && "opacity-70 cursor-not-allowed"
-                        )}
-                    >
-                        {isConfirming ? (
-                            <>
-                                <Loader2 className="size-4 animate-spin" />
-                                Confirming...
-                            </>
-                        ) : (
-                            <>
-                                <Check className="size-4" />
-                                Confirm Booking
-                            </>
-                        )}
-                    </button>
-                </div>
-            ) : onEdit && (
+            {onEdit && (
                 <>
                     <div className="p-3 border-t-2 border-black">
                         <button

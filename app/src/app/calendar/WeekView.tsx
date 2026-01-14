@@ -12,6 +12,11 @@ interface Appointment {
     date: Date;
     staff?: string;
     phone?: string;
+    colors?: {
+        bg: string;
+        border: string;
+        text: string;
+    };
 }
 
 interface WeekViewProps {
@@ -241,13 +246,16 @@ export default function WeekView({ currentDate, appointments, onAppointmentClick
                                             }}
                                             onClick={(e) => onAppointmentClick?.(e, apt)}
                                             className={cn(
-                                                "absolute border border-black/20 rounded-sm p-1 text-[10px] overflow-hidden cursor-pointer transition-colors",
-                                                apt.status === 'confirmed' ? "bg-green-200 hover:bg-green-300" : "bg-yellow-200 hover:bg-yellow-300",
+                                                "absolute rounded-sm p-1 text-[10px] overflow-hidden cursor-pointer transition-colors border-l-4",
+                                                apt.colors?.bg || "bg-blue-200",
+                                                apt.colors?.border || "border-l-blue-500",
+                                                apt.colors?.text || "text-blue-900",
+                                                "hover:brightness-95",
                                                 isPast && "opacity-40"
                                             )}
                                         >
                                             <p className="truncate font-semibold">{apt.client}</p>
-                                            <p className="truncate text-muted-foreground text-[9px]">{timeRange}</p>
+                                            <p className="truncate opacity-70 text-[9px]">{timeRange}</p>
                                         </div>
                                     );
                                 })}

@@ -1,27 +1,74 @@
-import React from "react";
+import React, { useState } from "react";
 import DashboardLayout from "../layout/DashboardLayout";
 import { useAuth } from "wasp/client/auth";
-import { getBusinessByUser, updateIntegrations } from "wasp/client/operations";
+import { getBusinessByUser, disconnectGoogleCalendar, updateIntegrations, getGoogleAuthUrl } from "wasp/client/operations";
 import { useQuery, useAction } from "wasp/client/operations";
 import { Calendar, Link2, Check, Zap } from "lucide-react";
+import ConfirmDisconnectModal from "./ConfirmDisconnectModal";
 
 export default function IntegrationsPage() {
     const { data: user } = useAuth();
-    const { data: business } = useQuery(getBusinessByUser);
+
+    const { data: business, refetch } = useQuery(getBusinessByUser);
     const updateIntegrationsFn = useAction(updateIntegrations);
+    const disconnectGoogleFn = useAction(disconnectGoogleCalendar);
+
+    const [modalState, setModalState] = useState<{
+        isOpen: boolean;
+        integration: 'google' | 'stripe' | null;
+        isLoading: boolean;
+    }>({
+        isOpen: false,
+        integration: null,
+        isLoading: false,
+    });
 
     const handleIntegrationToggle = async (key: 'google' | 'stripe', currentValue: boolean) => {
         try {
             if (key === 'google') {
-                // Placeholder for Google Auth flow
-                await updateIntegrationsFn({ isGoogleCalendarConnected: !currentValue });
+                if (!currentValue) {
+                    // Start Google OAuth flow
+                    const authUrl = await getGoogleAuthUrl();
+                    window.location.href = authUrl;
+                } else {
+                    // Show confirmation modal
+                    setModalState({ isOpen: true, integration: 'google', isLoading: false });
+                }
             } else {
-                // Placeholder for Stripe Connect flow
-                await updateIntegrationsFn({ isStripeConnected: !currentValue });
+                if (!currentValue) {
+                    // Connect Stripe (placeholder)
+                    await updateIntegrationsFn({ isStripeConnected: true });
+                    await refetch();
+                } else {
+                    // Show confirmation modal for Stripe
+                    setModalState({ isOpen: true, integration: 'stripe', isLoading: false });
+                }
             }
         } catch (error) {
             console.error("Failed to update integration:", error);
             alert("Failed to update integration settings.");
+        }
+    };
+
+    const handleConfirmDisconnect = async () => {
+        setModalState(prev => ({ ...prev, isLoading: true }));
+
+        try {
+            if (modalState.integration === 'google') {
+                await disconnectGoogleFn({});
+            } else if (modalState.integration === 'stripe') {
+                await updateIntegrationsFn({ isStripeConnected: false });
+            }
+
+            // Refetch business data to update UI
+            await refetch();
+
+            // Close modal
+            setModalState({ isOpen: false, integration: null, isLoading: false });
+        } catch (error) {
+            console.error("Failed to disconnect:", error);
+            alert("Failed to disconnect integration.");
+            setModalState(prev => ({ ...prev, isLoading: false }));
         }
     };
 
@@ -110,6 +157,15 @@ export default function IntegrationsPage() {
                     ))}
                 </div>
             </div>
+
+            {/* Confirmation Modal */}
+            <ConfirmDisconnectModal
+                isOpen={modalState.isOpen}
+                onClose={() => setModalState({ isOpen: false, integration: null, isLoading: false })}
+                onConfirm={handleConfirmDisconnect}
+                integrationName={modalState.integration === 'google' ? 'Google Calendar' : 'Stripe'}
+                isLoading={modalState.isLoading}
+            />
         </DashboardLayout>
     );
 }

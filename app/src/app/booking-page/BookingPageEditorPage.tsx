@@ -8,7 +8,7 @@ export default function BookingPageEditorPage() {
     const { data: user } = useAuth();
     const [copied, setCopied] = useState(false);
 
-    const baseUrl = import.meta.env.REACT_APP_BASE_URL || window.location.origin;
+    const baseUrl = import.meta.env.WASP_WEB_CLIENT_URL || window.location.origin;
     const bookingUrl = user?.slug ? `${baseUrl}/book/${user.slug}` : "";
 
     const handleCopyLink = () => {

@@ -46,6 +46,7 @@ function generateMockUserData(): MockUserData {
     credits,
     subscriptionStatus,
     lemonSqueezyCustomerPortalUrl: null,
+    googRefreshToken: null,
     paymentProcessorUserId: hasUserPaidOnStripe
       ? `cus_test_${faker.string.uuid()}`
       : null,
@@ -264,10 +265,7 @@ export async function seedBookingData(prismaClient: PrismaClient) {
 
         const customer = faker.helpers.arrayElement(customers);
         const service = faker.helpers.arrayElement(services);
-        const status = faker.helpers.weightedArrayElement([
-          { value: "confirmed", weight: 8 },
-          { value: "pending", weight: 2 },
-        ]);
+        const status = "confirmed";
 
         // Compute UTC timestamps from date and time
         const [hours, mins] = time.split(':').map(Number);

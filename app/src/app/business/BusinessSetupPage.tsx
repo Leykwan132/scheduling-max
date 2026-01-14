@@ -143,7 +143,8 @@ export default function BusinessSetupPage() {
     }, [business, user]);
 
     // State
-    const [activeTab, setActiveTab] = useState<'profile' | 'services' | 'availability'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'style'>('profile');
+
     const [copied, setCopied] = useState(false);
     const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' }>>([]);
     const [isSaving, setIsSaving] = useState(false);
@@ -187,6 +188,14 @@ export default function BusinessSetupPage() {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     });
 
+    // Style customization state
+    const [styleForm, setStyleForm] = useState({
+        styleTemplate: "modern",
+        styleBackground: "#FDFDFD",
+        stylePrimaryColor: "#FFC857",
+        styleSecondaryColor: "#E9F5DB"
+    });
+
     // Update form when user data loads
     useEffect(() => {
         if (user) {
@@ -220,6 +229,14 @@ export default function BusinessSetupPage() {
                 isContactEmailEnabled: !!business.contactEmail && (business.isContactEmailEnabled ?? false),
                 isPhoneEnabled: business.isPhoneEnabled ?? true
             }));
+
+            // Load style preferences
+            setStyleForm({
+                styleTemplate: business.styleTemplate || "modern",
+                styleBackground: business.styleBackground || "#FDFDFD",
+                stylePrimaryColor: business.stylePrimaryColor || "#FFC857",
+                styleSecondaryColor: business.styleSecondaryColor || "#E9F5DB"
+            });
         }
     }, [business]);
 
@@ -267,7 +284,7 @@ export default function BusinessSetupPage() {
         return currentState !== initialScheduleState;
     }, [scheduleDays, initialScheduleState]);
 
-    const baseUrl = import.meta.env.REACT_APP_BASE_URL || window.location.origin;
+    const baseUrl = import.meta.env.WASP_WEB_CLIENT_URL || window.location.origin;
     const bookingUrl = user?.slug ? `${baseUrl}/book/${user.slug}` : "";
 
     const handleCopyLink = () => {
@@ -337,6 +354,34 @@ export default function BusinessSetupPage() {
         } finally {
             setIsUploadingPhoto(false);
             setUploadProgress(0);
+        }
+    };
+
+    const handleSaveStyle = async () => {
+        setIsSaving(true);
+        try {
+            await updateBusinessAction({
+                name: business?.name || profileForm.username || "My Business",
+                slug: profileForm.slug || user?.username || "business",
+                phone: profileForm.phone,
+                instagramUrl: profileForm.instagramUrl,
+                isInstagramEnabled: profileForm.isInstagramEnabled,
+                tiktokUrl: profileForm.tiktokUrl,
+                isTikTokEnabled: profileForm.isTikTokEnabled,
+                facebookUrl: profileForm.facebookUrl,
+                isFacebookEnabled: profileForm.isFacebookEnabled,
+                websiteUrl: profileForm.websiteUrl,
+                isWebsiteEnabled: profileForm.isWebsiteEnabled,
+                contactEmail: profileForm.contactEmail,
+                isContactEmailEnabled: profileForm.isContactEmailEnabled,
+                isPhoneEnabled: profileForm.isPhoneEnabled,
+                ...styleForm
+            });
+            addToast("Style settings saved!", 'success');
+        } catch (error: any) {
+            addToast("Failed to save style: " + error.message, 'error');
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -706,46 +751,37 @@ export default function BusinessSetupPage() {
                     </div>
                 </div>
 
-                {/* Navigation Tabs */}
-                <div className="flex gap-4 mb-8 border-b-2 border-black/10">
+
+
+                {/* Tabs */}
+                <div className="flex border-b-2 border-black mb-6">
                     <button
                         onClick={() => setActiveTab('profile')}
                         className={cn(
-                            "px-4 py-3 font-black text-sm uppercase border-b-4 transition-all",
+                            "px-6 py-3 font-black text-sm uppercase translate-y-[2px] transition-colors",
                             activeTab === 'profile'
-                                ? "border-black text-black"
-                                : "border-transparent text-muted-foreground hover:text-black"
+                                ? "bg-white border-x-2 border-t-2 border-black z-10"
+                                : "bg-transparent text-muted-foreground hover:text-black border-transparent"
                         )}
                     >
                         Profile
                     </button>
                     <button
-                        onClick={() => setActiveTab('availability')}
+                        onClick={() => setActiveTab('style')}
                         className={cn(
-                            "px-4 py-3 font-black text-sm uppercase border-b-4 transition-all",
-                            activeTab === 'availability'
-                                ? "border-black text-black"
-                                : "border-transparent text-muted-foreground hover:text-black"
+                            "px-6 py-3 font-black text-sm uppercase translate-y-[2px] transition-colors",
+                            activeTab === 'style'
+                                ? "bg-white border-x-2 border-t-2 border-black z-10"
+                                : "bg-transparent text-muted-foreground hover:text-black border-transparent"
                         )}
                     >
-                        Availability
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('services')}
-                        className={cn(
-                            "px-4 py-3 font-black text-sm uppercase border-b-4 transition-all",
-                            activeTab === 'services'
-                                ? "border-black text-black"
-                                : "border-transparent text-muted-foreground hover:text-black"
-                        )}
-                    >
-                        Services
+                        Style
                     </button>
                 </div>
 
-                {/* Content */}
-                <div className="space-y-6">
-                    {activeTab === 'profile' && (
+                {/* Profile Content */}
+                {activeTab === 'profile' && (
+                    <div className="space-y-6">
                         <div className="bg-background border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <h2 className="text-lg font-black uppercase mb-6 flex items-center gap-2">
                                 <UserIcon className="size-5" />
@@ -1160,560 +1196,212 @@ export default function BusinessSetupPage() {
                                 )}
                             </div>
                         </div>
-                    )}
+                    </div>
+                )}
 
-                    {activeTab === 'availability' && (
-                        <div className="bg-background border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            {/* Header */}
-                            <h2 className="text-lg font-black uppercase mb-6 flex items-center gap-2">
-                                <Clock className="size-5" />
-                                Availability Schedule
-                            </h2>
+                {/* Style Content */}
+                {activeTab === 'style' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Editor Column */}
+                        <div className="lg:col-span-4 space-y-6">
+                            <div className="bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                                <h3 className="font-black text-lg uppercase mb-4 flex items-center gap-2">
+                                    <Palette className="size-5" />
+                                    Look & Feel
+                                </h3>
 
-                            {/* Timezone Display */}
-                            <div className="mb-8">
-                                <label className="block text-xs font-bold text-muted-foreground mb-2 uppercase">Timezone</label>
-                                <div className="relative">
-                                    <button
-                                        onClick={() => setIsTimezoneOpen(!isTimezoneOpen)}
-                                        className="w-full flex items-center justify-between px-4 py-2.5 border-2 border-black font-bold text-sm bg-white hover:bg-muted/30 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <Globe className="size-4 text-muted-foreground" />
-                                            <span>{profileForm.timezone}</span>
+                                <div className="space-y-6">
+                                    {/* Template Selection */}
+                                    <div>
+                                        <label className="block text-sm font-black uppercase mb-3">Template</label>
+                                        <div className="space-y-2">
+                                            {['modern', 'classic', 'minimal'].map((template) => (
+                                                <button
+                                                    key={template}
+                                                    onClick={() => setStyleForm({ ...styleForm, styleTemplate: template })}
+                                                    className={cn(
+                                                        "w-full text-left p-3 border-2 font-bold uppercase text-sm transition-all flex items-center justify-between",
+                                                        styleForm.styleTemplate === template
+                                                            ? "border-black bg-primary text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                                            : "border-gray-200 text-gray-500 hover:border-black hover:text-black"
+                                                    )}
+                                                >
+                                                    {template}
+                                                    {styleForm.styleTemplate === template && <Check className="size-4" />}
+                                                </button>
+                                            ))}
                                         </div>
-                                        <ChevronDown className={cn("size-4 transition-transform", isTimezoneOpen && "rotate-180")} />
-                                    </button>
+                                    </div>
 
-                                    {isTimezoneOpen && (
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] z-50 max-h-60 flex flex-col animate-in fade-in zoom-in-95 duration-200">
-                                            <div className="p-2 border-b-2 border-black/10 sticky top-0 bg-white z-10">
-                                                <div className="relative">
-                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                                    {/* Colors */}
+                                    <div>
+                                        <label className="block text-sm font-black uppercase mb-3">Colors</label>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">Background</label>
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        type="color"
+                                                        value={styleForm.styleBackground}
+                                                        onChange={(e) => setStyleForm({ ...styleForm, styleBackground: e.target.value })}
+                                                        className="h-10 w-10 border-2 border-black p-0 cursor-pointer"
+                                                    />
                                                     <input
                                                         type="text"
-                                                        placeholder="Search timezone..."
-                                                        value={timezoneSearchQuery}
-                                                        onChange={(e) => setTimezoneSearchQuery(e.target.value)}
-                                                        className="w-full pl-9 pr-3 py-2 text-sm font-bold border-2 border-black/20 focus:border-black focus:outline-none transition-colors"
-                                                        autoFocus
+                                                        value={styleForm.styleBackground}
+                                                        onChange={(e) => setStyleForm({ ...styleForm, styleBackground: e.target.value })}
+                                                        className="flex-1 px-3 py-2 border-2 border-black text-sm font-mono font-bold uppercase"
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="overflow-y-auto flex-1 p-1">
-                                                {Intl.supportedValuesOf('timeZone')
-                                                    .filter(tz => tz.toLowerCase().includes(timezoneSearchQuery.toLowerCase()))
-                                                    .map((tz) => (
-                                                        <button
-                                                            key={tz}
-                                                            onClick={() => handleTimezoneChange(tz)}
-                                                            className={cn(
-                                                                "w-full text-left px-3 py-2 text-sm font-bold hover:bg-black hover:text-white transition-colors flex items-center justify-between group",
-                                                                profileForm.timezone === tz && "bg-black/5"
-                                                            )}
-                                                        >
-                                                            {tz}
-                                                            {profileForm.timezone === tz && (
-                                                                <Check className="size-4 opacity-100 group-hover:text-white" />
-                                                            )}
-                                                        </button>
-                                                    ))}
-                                                {Intl.supportedValuesOf('timeZone').filter(tz => tz.toLowerCase().includes(timezoneSearchQuery.toLowerCase())).length === 0 && (
-                                                    <div className="p-4 text-center text-sm font-bold text-muted-foreground">
-                                                        No timezones found
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
 
-
-
-                            {/* Weekly Hours */}
-                            <div className="space-y-6 mb-8">
-                                <div className="flex items-center justify-between border-b-2 border-black/10 pb-2">
-                                    <h3 className="text-sm font-black uppercase">Weekly Hours</h3>
-                                    <button
-                                        onClick={() => {
-                                            if (confirm("Reset to standard business hours (Mon-Fri, 9am-5pm)?")) {
-                                                setScheduleDays([
-                                                    { dayOfWeek: "mon", startTime: "09:00", endTime: "17:00" },
-                                                    { dayOfWeek: "tue", startTime: "09:00", endTime: "17:00" },
-                                                    { dayOfWeek: "wed", startTime: "09:00", endTime: "17:00" },
-                                                    { dayOfWeek: "thu", startTime: "09:00", endTime: "17:00" },
-                                                    { dayOfWeek: "fri", startTime: "09:00", endTime: "17:00" },
-                                                ]);
-                                            }
-                                        }}
-                                        className="text-xs font-bold underline hover:text-black/70"
-                                    >
-                                        Reset to Standard Hours
-                                    </button>
-                                </div>
-                                <div className="space-y-4">
-                                    {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => {
-                                        const daySlots = scheduleDays.filter(s => s.dayOfWeek === day);
-                                        const isEnabled = daySlots.length > 0;
-
-                                        return (
-                                            <div key={day} className="flex flex-col sm:flex-row sm:items-start gap-4 py-2 border-b border-dashed border-gray-200 last:border-0">
-                                                {/* Toggle + Label */}
-                                                <div className="w-32 flex items-center gap-3 pt-2">
-                                                    <button
-                                                        onClick={() => handleToggleDay(day, !isEnabled)}
-                                                        className={cn("w-10 h-6 rounded-full border-2 border-black relative transition-colors", isEnabled ? "bg-black" : "bg-gray-200")}
-                                                    >
-                                                        <div className={cn("size-4 rounded-full border-2 border-black bg-white absolute top-0.5 transition-all", isEnabled ? "left-4" : "left-0.5")} />
-                                                    </button>
-                                                    <span className="font-bold uppercase text-sm">{day}</span>
-                                                </div>
-
-                                                {/* Slots */}
-                                                <div className="flex-1 space-y-2">
-                                                    {isEnabled ? (
-                                                        <>
-                                                            {daySlots.map((slot, idx) => (
-                                                                <div key={idx} className="flex items-center gap-2">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <input
-                                                                            type="time"
-                                                                            value={slot.startTime}
-                                                                            onChange={(e) => handleUpdateSlot(day, idx, 'startTime', e.target.value)}
-                                                                            className="px-2 py-1 border-2 border-black font-bold text-sm bg-white w-28"
-                                                                        />
-                                                                        <span className="font-bold">-</span>
-                                                                        <input
-                                                                            type="time"
-                                                                            value={slot.endTime}
-                                                                            onChange={(e) => handleUpdateSlot(day, idx, 'endTime', e.target.value)}
-                                                                            className="px-2 py-1 border-2 border-black font-bold text-sm bg-white w-28"
-                                                                        />
-                                                                    </div>
-                                                                    <button onClick={() => handleRemoveSlot(day, idx)} className="p-1 hover:bg-red-100 text-red-500 rounded transition-colors">
-                                                                        <Trash2 className="size-4" />
-                                                                    </button>
-                                                                    {idx === daySlots.length - 1 && (
-                                                                        <button onClick={() => handleAddSlot(day)} className="p-1 hover:bg-gray-100 rounded transition-colors" title="Add another slot">
-                                                                            <Plus className="size-4" />
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </>
-                                                    ) : (
-                                                        <div className="pt-2 text-sm text-muted-foreground font-medium italic">Unavailable</div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                {isScheduleDirty && (
-                                    <div className="flex justify-end pt-4 animate-in fade-in slide-in-from-bottom-2">
-                                        <button
-                                            onClick={handleSaveSchedule}
-                                            disabled={isSaving}
-                                            className="bg-black text-white px-6 py-2 border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:scale-[1.02] transition-all disabled:opacity-50"
-                                        >
-                                            {isSaving ? "Saving..." : "Save Changes"}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Overrides */}
-                            <div className="space-y-6 pt-6 border-t-2 border-black/10">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-black uppercase">Date-Specific Hours</h3>
-                                    <button
-                                        onClick={() => {
-                                            setEditingOverrideId(null); // Ensure we're creating a new one
-                                            setSelectedDates([]);
-                                            setOverrideForm({ dates: [], isUnavailable: false, startTime: "09:00", endTime: "17:00" });
-                                            setIsOverrideModalOpen(true);
-                                        }}
-                                        className="bg-white text-black px-4 py-2 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"
-                                    >
-                                        <Plus className="size-4" /> Add Custom Date
-                                    </button>
-                                </div>
-
-                                <div className="space-y-3">
-                                    {overrides.length === 0 && (
-                                        <p className="text-muted-foreground text-sm italic">No specific date overrides set.</p>
-                                    )}
-                                    {overrides.map((override) => (
-                                        <div key={override.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                                             <div>
-                                                <div className="flex items-center gap-2 font-bold mb-1">
-                                                    <Calendar className="size-4" />
-                                                    <span>{override.date}</span>
-                                                </div>
-                                                <div className="text-sm">
-                                                    {override.isUnavailable ? (
-                                                        <span className="text-red-500 font-bold uppercase text-xs border border-red-500 px-1 rounded">Unavailable</span>
-                                                    ) : (
-                                                        <span>{formatTime(override.startTime)} - {formatTime(override.endTime)}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2 self-end sm:self-center">
-                                                <button
-                                                    onClick={() => handleEditOverride(override)}
-                                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
-                                                    title="Edit Override"
-                                                >
-                                                    <Edit className="size-5" />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeleteOverride(override.id)}
-                                                    className="p-1 hover:bg-red-100 text-red-500 rounded transition-colors"
-                                                    title="Delete Override"
-                                                >
-                                                    <Trash2 className="size-5" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Override Modal */}
-                            {isOverrideModalOpen && (
-                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                                    <div className="bg-white border-2 border-black p-6 w-full max-w-md shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-in zoom-in-95 duration-200">
-                                        <h3 className="text-lg font-black uppercase mb-4">{editingOverrideId ? "Edit Custom Schedule" : "Add Custom Schedule"}</h3>
-
-                                        <div className="space-y-6">
-                                            {/* DayPicker with Neo-Brutalist Styles */}
-                                            <div className="flex flex-col items-center w-full ">
-                                                <div className="border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <DayPicker
-                                                        mode="multiple"
-                                                        max={editingOverrideId ? 1 : undefined}
-                                                        selected={selectedDates}
-                                                        onSelect={setSelectedDates}
-                                                        classNames={{
-                                                            chevron: "fill-black",
-                                                            day: "p-1",
-                                                        }}
-                                                        disabled={{ before: new Date() }}
-                                                        modifiersClassNames={{
-                                                            disabled: "bg-gray-200 text-gray-400 opacity-50 cursor-not-allowed",
-                                                            selected: "bg-primary text-black border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] font-bold rounded-none hover:bg-primary hover:text-black focus:bg-primary focus:text-black active:bg-primary active:text-black",
-                                                            today: "font-black underline decoration-2 underline-offset-4 decoration-black",
-                                                        }}
+                                                <label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">Primary (Buttons/Highlights)</label>
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        type="color"
+                                                        value={styleForm.stylePrimaryColor}
+                                                        onChange={(e) => setStyleForm({ ...styleForm, stylePrimaryColor: e.target.value })}
+                                                        className="h-10 w-10 border-2 border-black p-0 cursor-pointer"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        value={styleForm.stylePrimaryColor}
+                                                        onChange={(e) => setStyleForm({ ...styleForm, stylePrimaryColor: e.target.value })}
+                                                        className="flex-1 px-3 py-2 border-2 border-black text-sm font-mono font-bold uppercase"
                                                     />
                                                 </div>
                                             </div>
 
-
-
-                                            {/* Time Inputs */}
-                                            {!overrideForm.isUnavailable && (
-                                                <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                                                    <div>
-                                                        <label className="block text-xs font-bold uppercase mb-1">Start Time</label>
-                                                        <input
-                                                            type="time"
-                                                            value={overrideForm.startTime}
-                                                            onChange={(e) => setOverrideForm({ ...overrideForm, startTime: e.target.value })}
-                                                            className="w-full px-3 py-2 border-2 border-black font-bold h-12 bg-white focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:translate-x-[-2px] focus:translate-y-[-2px] transition-all outline-none"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-bold uppercase mb-1">End Time</label>
-                                                        <input
-                                                            type="time"
-                                                            value={overrideForm.endTime}
-                                                            onChange={(e) => setOverrideForm({ ...overrideForm, endTime: e.target.value })}
-                                                            className="w-full px-3 py-2 border-2 border-black font-bold h-12 bg-white focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:translate-x-[-2px] focus:translate-y-[-2px] transition-all outline-none"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Unavailable Toggle */}
-                                            <div className="flex items-center justify-between py-4 border-t-2 border-black/10">
-                                                <div className="flex items-center gap-3 w-full cursor-pointer group" onClick={() => setOverrideForm({ ...overrideForm, isUnavailable: !overrideForm.isUnavailable })}>
-                                                    <div className={cn("w-12 h-7 rounded-full border-2 border-black relative transition-colors", overrideForm.isUnavailable ? "bg-black" : "bg-gray-200 group-hover:bg-gray-300")}>
-                                                        <div className={cn("size-5 rounded-full border-2 border-black bg-white absolute top-0.5 transition-all", overrideForm.isUnavailable ? "left-5" : "left-0.5")} />
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="font-black text-sm uppercase">Mark as Unavailable</span>
-                                                        <span className="text-xs text-muted-foreground font-medium">Block bookings for these dates</span>
-                                                    </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-muted-foreground uppercase mb-1 block">Secondary (Accents)</label>
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        type="color"
+                                                        value={styleForm.styleSecondaryColor}
+                                                        onChange={(e) => setStyleForm({ ...styleForm, styleSecondaryColor: e.target.value })}
+                                                        className="h-10 w-10 border-2 border-black p-0 cursor-pointer"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        value={styleForm.styleSecondaryColor}
+                                                        onChange={(e) => setStyleForm({ ...styleForm, styleSecondaryColor: e.target.value })}
+                                                        className="flex-1 px-3 py-2 border-2 border-black text-sm font-mono font-bold uppercase"
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
-
-                                        <div className="flex justify-end gap-2 mt-6 border-t-2 border-black/10 pt-4">
-                                            <button
-                                                onClick={() => {
-                                                    setIsOverrideModalOpen(false);
-                                                    setSelectedDates([]);
-                                                    setEditingOverrideId(null);
-                                                }}
-                                                className="px-4 py-2 font-bold uppercase hover:bg-gray-100"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleSaveOverride}
-                                                disabled={isSaving || !selectedDates || selectedDates.length === 0}
-                                                className="bg-black text-white px-6 py-2 border-2 border-black font-black text-xs uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                                            >
-                                                Save Custom Date
-                                            </button>
-                                        </div>
                                     </div>
                                 </div>
-                            )}
-                        </div>
-                    )}
 
-
-                    {
-                        activeTab === 'services' && (
-                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <div className="flex justify-end mb-6">
+                                <div className="mt-8 pt-6 border-t-2 border-black/10">
                                     <button
-                                        onClick={() => openServiceModal()}
-                                        className="bg-primary text-black px-4 py-2.5 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all flex items-center gap-2 font-black text-sm uppercase"
+                                        onClick={handleSaveStyle}
+                                        disabled={isSaving}
+                                        className="w-full bg-black text-white px-6 py-3 border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:scale-[1.02] transition-all disabled:opacity-50"
                                     >
-                                        <Plus className="size-4" />
-                                        Add Service
+                                        {isSaving ? "Saving..." : "Save Style"}
                                     </button>
                                 </div>
+                            </div>
+                        </div>
 
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                    {services && services.length > 0 ? (
-                                        [...services].sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1)).map((service: any) => (
-                                            <div
-                                                key={service.id}
-                                                className={cn(
-                                                    "group relative bg-background border-2 border-black p-5 aspect-square flex flex-col justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all",
-                                                    !service.isActive && "opacity-60 grayscale-[0.5]"
-                                                )}
-                                            >
-                                                <div>
-                                                    <div className="flex items-start justify-between mb-3">
-                                                        <div className="bg-primary p-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                                                            <Package className="size-4 text-black" />
-                                                        </div>
-                                                        <span className={cn(
-                                                            "px-1.5 py-0.5 text-[8px] font-black border-2 border-black uppercase whitespace-nowrap",
-                                                            service.isActive ? "bg-green-200" : "bg-gray-200"
-                                                        )}>
-                                                            {service.isActive ? 'Active' : 'Inactive'}
-                                                        </span>
-                                                    </div>
-                                                    <h3 className="font-black text-sm uppercase leading-tight line-clamp-2">{service.name}</h3>
-                                                    {service.description && (
-                                                        <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2 leading-tight">
-                                                            {service.description}
-                                                        </p>
-                                                    )}
-                                                </div>
+                        {/* Preview Column */}
+                        <div className="lg:col-span-8">
+                            <div className="sticky top-6">
+                                <div className="bg-gray-100 border-2 border-black p-4 rounded-xl">
+                                    <div className="flex items-center justify-between mb-4 px-2">
+                                        <div className="flex gap-1.5">
+                                            <div className="h-3 w-3 rounded-full bg-red-400 border border-black/10"></div>
+                                            <div className="h-3 w-3 rounded-full bg-yellow-400 border border-black/10"></div>
+                                            <div className="h-3 w-3 rounded-full bg-green-400 border border-black/10"></div>
+                                        </div>
+                                        <p className="text-xs font-bold text-muted-foreground uppercase">Live Preview</p>
+                                    </div>
 
-                                                <div className="mt-auto pt-2 border-t-2 border-black/5">
-                                                    <div className="flex items-center justify-between">
-                                                        <div>
-                                                            <p className="text-xl font-black leading-none">${service.price}</p>
-                                                        </div>
-                                                        <div className="flex items-baseline gap-1">
-                                                            <p className="text-xl font-black text-black leading-none italic">
-                                                                {service.duration}
-                                                            </p>
-                                                            <p className="text-[10px] font-black text-muted-foreground uppercase leading-none">
-                                                                Mins
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="absolute inset-0 bg-white/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3">
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => openServiceModal(service)}
-                                                            className="p-2 border-2 border-black bg-white hover:bg-muted transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
-                                                            title="Edit Service"
-                                                        >
-                                                            <Edit className="size-4 text-black" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setDeleteModal({ isOpen: true, serviceId: service.id, serviceName: service.name })}
-                                                            className="p-2 border-2 border-black bg-red-100 hover:bg-red-200 transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
-                                                            title="Delete Service"
-                                                        >
-                                                            <Trash2 className="size-4 text-red-600" />
-                                                        </button>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => handleToggleActive(service)}
-                                                        className={cn(
-                                                            "px-3 py-1.5 border-2 border-black font-black text-[10px] uppercase transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]",
-                                                            service.isActive ? "bg-gray-200 text-black" : "bg-green-400 text-black"
-                                                        )}
+                                    {/* Mock Booking Page Preview */}
+                                    <div
+                                        className="w-full aspect-[4/3] rounded-lg border-2 border-black overflow-hidden shadow-inner relative"
+                                        style={{ backgroundColor: styleForm.styleBackground }}
+                                    >
+                                        <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
+                                            <div className="p-8 max-w-lg mx-auto min-h-full flex flex-col items-center text-center">
+                                                {/* Profile Header */}
+                                                <div className="relative mb-6">
+                                                    <div
+                                                        className="size-24 rounded-full border-4 border-black overflow-hidden bg-white relative z-10"
                                                     >
-                                                        {service.isActive ? "Deactivate" : "Activate"}
+                                                        {currentUserProfileImageUrl ? (
+                                                            <img src={currentUserProfileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                                                                <UserIcon className="size-10 text-gray-400" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="absolute -bottom-2 -right-2 bg-white border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase rotate-[-6deg] shadow-sm z-20">
+                                                        Open
+                                                    </div>
+                                                </div>
+
+                                                <h1 className="text-2xl font-black uppercase mb-2">{business?.name || "Your Business"}</h1>
+                                                <p className="text-sm font-medium opacity-70 mb-6 max-w-sm mx-auto">{user?.bio || "Your bio will appear here..."}</p>
+
+                                                {/* Mock Services */}
+                                                <div className="w-full space-y-3 text-left">
+                                                    <p className="text-xs font-black uppercase opacity-50 mb-2">Popular Services</p>
+
+                                                    {[1, 2].map((i) => (
+                                                        <div key={i} className="group bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] transition-all cursor-pointer">
+                                                            <div className="flex justify-between items-start">
+                                                                <div>
+                                                                    <div className="font-black text-sm uppercase">Example Service {i}</div>
+                                                                    <div className="text-xs font-medium text-gray-500 mt-1">30 mins • Includes consultation</div>
+                                                                </div>
+                                                                <div
+                                                                    className="px-3 py-1 border-2 border-black text-xs font-bold"
+                                                                    style={{ backgroundColor: styleForm.styleSecondaryColor }}
+                                                                >
+                                                                    $50
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-3 pt-3 border-t-2 border-black/5 flex justify-end">
+                                                                <span
+                                                                    className="text-xs font-black underline decoration-2 underline-offset-2"
+                                                                    style={{ textDecorationColor: styleForm.stylePrimaryColor }}
+                                                                >
+                                                                    Book Now →
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Mock Calendar Button */}
+                                                <div className="mt-8 w-full">
+                                                    <button
+                                                        className="w-full py-4 border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                                        style={{ backgroundColor: styleForm.stylePrimaryColor }}
+                                                    >
+                                                        Book an Appointment
                                                     </button>
                                                 </div>
                                             </div>
-                                        ))
-                                    ) : (
-                                        <div className="bg-muted/20 border-2 border-dashed border-black p-12 text-center">
-                                            <Package className="size-12 mx-auto text-muted-foreground mb-4" />
-                                            <h3 className="text-xl font-black uppercase mb-2">No Services Yet</h3>
-                                            <p className="text-muted-foreground mb-4 font-medium">Add your first service to get started.</p>
-                                            <button
-                                                onClick={() => openServiceModal()}
-                                                className="bg-primary text-black px-6 py-3 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all font-black text-sm uppercase"
-                                            >
-                                                Create Service
-                                            </button>
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                        )
-                    }
-                </div >
-            </div >
-
-            {/* Service Modal */}
-            {
-                isServiceModalOpen && (
-                    <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4">
-                        <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-md animate-in zoom-in-95 fade-in duration-200">
-                            <div className="bg-primary px-6 py-4 border-b-4 border-black flex items-center justify-between">
-                                <h2 className="text-xl font-black uppercase tracking-tight">
-                                    {editingService ? "Edit Service" : "New Service"}
-                                </h2>
-                                <button
-                                    onClick={() => setIsServiceModalOpen(false)}
-                                    className="p-2 hover:bg-black/10 transition-colors border-2 border-black bg-white"
-                                >
-                                    <ArrowRight className="size-4" />
-                                </button>
-                            </div>
-                            <form onSubmit={handleServiceSubmit} className="p-6 space-y-4">
-                                <div>
-                                    <label className="block text-sm font-black uppercase mb-2">Service Name</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={serviceForm.name}
-                                        onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
-                                        className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black"
-                                        placeholder="e.g. Haircut"
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-black uppercase mb-2">Duration (min)</label>
-                                        <input
-                                            type="number"
-                                            required
-                                            min="5"
-                                            step="5"
-                                            value={serviceForm.duration}
-                                            onChange={(e) => setServiceForm({ ...serviceForm, duration: parseInt(e.target.value) })}
-                                            className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black"
-                                        />
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-black uppercase mb-2">Price ($)</label>
-                                        <input
-                                            type="number"
-                                            required
-                                            min="0"
-                                            value={serviceForm.price}
-                                            onChange={(e) => setServiceForm({ ...serviceForm, price: parseFloat(e.target.value) })}
-                                            className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black"
-                                        />
+
+                                    <div className="mt-4 flex items-center justify-center gap-2 text-xs font-bold text-muted-foreground">
+                                        <Globe className="size-3" />
+                                        Scheduling-max Preview
                                     </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-black uppercase mb-2">Description</label>
-                                    <textarea
-                                        value={serviceForm.description}
-                                        onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
-                                        className="w-full px-4 py-2 border-2 border-black font-bold focus:outline-none focus:ring-2 focus:ring-black h-24 resize-none"
-                                        placeholder="Optional description..."
-                                    />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
-                                        id="isActive"
-                                        checked={serviceForm.isActive}
-                                        onChange={(e) => setServiceForm({ ...serviceForm, isActive: e.target.checked })}
-                                        className="size-5 border-2 border-black rounded-sm accent-black"
-                                    />
-                                    <label htmlFor="isActive" className="text-sm font-black uppercase cursor-pointer">
-                                        Active Service
-                                    </label>
-                                </div>
-
-                                <div className="pt-4 border-t-2 border-black/10 flex justify-end gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsServiceModalOpen(false)}
-                                        className="px-6 py-3 border-2 border-black font-black text-sm uppercase hover:bg-muted/50 transition-all"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={isSaving}
-                                        className="px-6 py-3 bg-black text-white border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:scale-[1.02] transition-all disabled:opacity-70"
-                                    >
-                                        {isSaving ? "Saving..." : (editingService ? "Update Service" : "Create Service")}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )
-            }
-
-            {/* Delete Confirmation Modal */}
-            {
-                deleteModal.isOpen && (
-                    <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4">
-                        <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-sm animate-in zoom-in-95 fade-in duration-200">
-                            <div className="bg-red-500 px-6 py-4 border-b-4 border-black text-white">
-                                <h2 className="text-xl font-black uppercase tracking-tight">Delete Service?</h2>
-                            </div>
-                            <div className="p-6">
-                                <p className="font-bold mb-6">
-                                    Are you sure you want to delete <span className="uppercase text-red-600 underline">"{deleteModal.serviceName}"</span>? This action cannot be undone.
-                                </p>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={() => setDeleteModal({ isOpen: false, serviceId: null, serviceName: "" })}
-                                        className="flex-1 py-3 border-2 border-black font-black text-sm uppercase hover:bg-muted/50 transition-all"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={handleDeleteService}
-                                        disabled={isDeleting}
-                                        className="flex-1 py-3 bg-red-500 text-white border-2 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[4px] active:translate-y-[4px] disabled:opacity-70 transition-all"
-                                    >
-                                        {isDeleting ? "Deleting..." : "Delete"}
-                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
-                )
-            }
+                )}
 
-            <ToastContainer toasts={toasts} onRemove={removeToast} />
+                <ToastContainer toasts={toasts} onRemove={removeToast} />
+            </div>
         </DashboardLayout >
     );
 }

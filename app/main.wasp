@@ -185,6 +185,18 @@ page BusinessSetupPage {
   component: import BusinessSetupPage from "@src/app/business/BusinessSetupPage"
 }
 
+route ServicesRoute { path: "/app/services", to: ServicesPage }
+page ServicesPage {
+  authRequired: true,
+  component: import ServicesPage from "@src/app/services/ServicesPage"
+}
+
+route AvailabilityRoute { path: "/app/availability", to: AvailabilityPage }
+page AvailabilityPage {
+  authRequired: true,
+  component: import AvailabilityPage from "@src/app/availability/AvailabilityPage"
+}
+
 route ClientsRoute { path: "/app/clients", to: ClientsPage }
 page ClientsPage {
   authRequired: true,
@@ -236,6 +248,11 @@ action upsertBusiness {
 
 action updateIntegrations {
   fn: import { updateIntegrations } from "@src/app/operations",
+  entities: [Business, User]
+}
+
+action disconnectGoogleCalendar {
+  fn: import { disconnectGoogleCalendar } from "@src/app/operations",
   entities: [Business, User]
 }
 
@@ -295,9 +312,25 @@ query getCalendarBookings {
   entities: [Booking, Business, User, Customer, Service]
 }
 
+query getGoogleCalendarEvents {
+  fn: import { getGoogleCalendarEvents } from "@src/app/operations",
+  entities: [User]
+}
+
+
 query getCustomersByBusiness {
   fn: import { getCustomersByBusiness } from "@src/app/operations",
   entities: [Customer, Business, User]
+}
+
+query getGoogleAuthUrl {
+  fn: import { getGoogleAuthUrl } from "@src/app/operations",
+  entities: [User]
+}
+
+query getGoogleCalendarStatus {
+  fn: import { getGoogleCalendarStatus } from "@src/app/operations",
+  entities: [User]
 }
 
 action createBooking {
@@ -509,3 +542,9 @@ page AdminMessagesPage {
   component: import AdminMessages from "@src/admin/dashboards/messages/MessagesPage"
 }
 //#endregion
+
+api googleCallback {
+  fn: import { googleCallback } from "@src/server/integrations/google",
+  httpRoute: (GET, "/google/callback"),
+  entities: [User, Business]
+}

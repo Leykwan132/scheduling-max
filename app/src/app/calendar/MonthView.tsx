@@ -13,6 +13,11 @@ interface Appointment {
     duration?: string;
     staff?: string;
     phone?: string;
+    colors?: {
+        bg: string;
+        border: string;
+        text: string;
+    };
 }
 
 interface MonthViewProps {
@@ -129,8 +134,11 @@ export default function MonthView({ currentDate, appointments, onAppointmentClic
                                                 key={apt.id}
                                                 onClick={(e) => onAppointmentClick?.(e, apt)}
                                                 className={cn(
-                                                    "text-[9px] sm:text-[10px] px-1.5 py-1 border border-black/20 font-medium truncate cursor-pointer transition-colors rounded-sm",
-                                                    apt.status === 'confirmed' ? "bg-green-200 hover:bg-green-300" : "bg-yellow-200 hover:bg-yellow-300",
+                                                    "text-[9px] sm:text-[10px] px-1.5 py-1 font-medium truncate cursor-pointer transition-colors rounded-sm border-l-2",
+                                                    apt.colors?.bg || "bg-blue-200",
+                                                    apt.colors?.border || "border-l-blue-500",
+                                                    apt.colors?.text || "text-blue-900",
+                                                    "hover:brightness-95",
                                                     isPast && "opacity-40"
                                                 )}
                                             >
@@ -201,8 +209,11 @@ export default function MonthView({ currentDate, appointments, onAppointmentClic
                                             key={apt.id}
                                             onClick={(e) => onAppointmentClick?.(e, apt)}
                                             className={cn(
-                                                "p-3 border border-black/20 rounded cursor-pointer transition-colors",
-                                                apt.status === 'confirmed' ? "bg-green-200 hover:bg-green-300" : "bg-yellow-200 hover:bg-yellow-300"
+                                                "p-3 rounded cursor-pointer transition-colors border-l-4",
+                                                apt.colors?.bg || "bg-blue-200",
+                                                apt.colors?.border || "border-l-blue-500",
+                                                apt.colors?.text || "text-blue-900",
+                                                "hover:brightness-95"
                                             )}
                                         >
                                             <div className="flex items-center justify-between mb-1">

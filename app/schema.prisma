@@ -59,6 +59,8 @@ model User {
   bookings  Booking[]  @relation("StaffBookings")
   schedules Schedule[]
   reviews   Review[]   @relation("StaffReviews")
+
+  googRefreshToken String?
 }
 
 model File {
@@ -159,6 +161,12 @@ model Business {
   // Integrations
   isGoogleCalendarConnected Boolean @default(false)
   isStripeConnected         Boolean @default(false)
+
+  // Style customization
+  styleTemplate       String @default("modern")
+  styleBackground     String @default("#FDFDFD")
+  stylePrimaryColor   String @default("#FFC857")
+  styleSecondaryColor String @default("#E9F5DB")
 }
 
 model Service {
@@ -222,6 +230,8 @@ model Booking {
   status       String   @default("confirmed") // confirmed, pending, cancelled
   notes        String?
   price        Float
+
+  googleCalendarEventId String? // ID of the synced Google Calendar event
 
   review Review?
 }

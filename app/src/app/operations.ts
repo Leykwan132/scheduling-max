@@ -1,5 +1,6 @@
-import type { GetBusinessByUser, GetServicesByBusinessAndUserId, UpsertBusiness, CreateService, UpdateService, DeleteService, GetBookingsByBusiness, GetBookingsByUser, GetCustomersByBusiness, CreateBooking, GetSchedule, UpdateSchedule, UpdateScheduleOverride, GetPromosByBusiness, CreatePromo, UpdatePromo, DeletePromo, GetCalendarBookings, GetReviewsByBusiness, CreateReview, DeleteReview } from "wasp/server/operations";
+import type { GetBusinessByUser, GetServicesByBusinessAndUserId, UpsertBusiness, CreateService, UpdateService, DeleteService, GetBookingsByBusiness, GetBookingsByUser, GetCustomersByBusiness, CreateBooking, GetSchedule, UpdateSchedule, UpdateScheduleOverride, GetPromosByBusiness, CreatePromo, UpdatePromo, DeletePromo, GetCalendarBookings, GetReviewsByBusiness, CreateReview, DeleteReview, GetGoogleAuthUrl } from "wasp/server/operations";
 import { deleteFileFromS3, getDownloadFileSignedURLFromS3 } from "../file-upload/s3Utils";
+import { createGoogleCalendarEvent, updateGoogleCalendarEvent, deleteGoogleCalendarEvent, formatBookingForCalendar } from "../server/integrations/googleCalendar";
 
 // Queries
 
@@ -104,6 +105,10 @@ type UpsertBusinessArgs = {
     contactEmail?: string | null;
     isContactEmailEnabled?: boolean;
     isPhoneEnabled?: boolean;
+    styleTemplate?: string;
+    styleBackground?: string;
+    stylePrimaryColor?: string;
+    styleSecondaryColor?: string;
 };
 
 export const upsertBusiness: UpsertBusiness<UpsertBusinessArgs, any> = async (args, context) => {
@@ -132,6 +137,10 @@ export const upsertBusiness: UpsertBusiness<UpsertBusinessArgs, any> = async (ar
         contactEmail: args.contactEmail,
         isContactEmailEnabled: args.isContactEmailEnabled,
         isPhoneEnabled: args.isPhoneEnabled,
+        styleTemplate: args.styleTemplate,
+        styleBackground: args.styleBackground,
+        stylePrimaryColor: args.stylePrimaryColor,
+        styleSecondaryColor: args.styleSecondaryColor,
     };
 
     if (user?.businessId) {
@@ -179,6 +188,51 @@ export const updateIntegrations: any = async (args: UpdateIntegrationsArgs, cont
             ...(args.isStripeConnected !== undefined && { isStripeConnected: args.isStripeConnected }),
         }
     });
+};
+
+export const disconnectGoogleCalendar: any = async (_args: {}, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) throw new Error("Business not found");
+
+    // Revoke the token at Google's end if it exists
+    if (user.googRefreshToken) {
+        try {
+            await fetch('https://oauth2.googleapis.com/revoke', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    token: user.googRefreshToken,
+                }),
+            });
+            console.log('✅ Google token revoked successfully');
+        } catch (error) {
+            console.error('Failed to revoke Google token:', error);
+            // Continue anyway to clean up our database
+        }
+    }
+
+    // Remove the refresh token from User
+    await context.entities.User.update({
+        where: { id: context.user.id },
+        data: {
+            googRefreshToken: null,
+        },
+    });
+
+    // Update Business connection status
+    await context.entities.Business.update({
+        where: { id: user.businessId },
+        data: {
+            isGoogleCalendarConnected: false,
+        },
+    });
+
+    return { success: true };
 };
 
 type UpdateUserProfileArgs = {
@@ -700,7 +754,7 @@ export const createBooking: CreateBooking<CreateBookingArgs, any> = async (args,
     const endTimeUtc = new Date(startTimeUtc.getTime() + service.duration * 60000);
 
     // Create booking
-    const booking = await context.entities.Booking.create({
+    let booking = await context.entities.Booking.create({
         data: {
             businessId: business.id,
             customerId: customer.id,
@@ -719,6 +773,37 @@ export const createBooking: CreateBooking<CreateBookingArgs, any> = async (args,
             staff: true,
         },
     });
+
+    // Sync to Google Calendar if staff has connected
+    const staff = await context.entities.User.findUnique({
+        where: { id: args.staffId },
+    });
+
+    if (staff?.googRefreshToken) {
+        try {
+            const eventData = formatBookingForCalendar({
+                service,
+                customer,
+                staff: booking.staff,
+                startTimeUtc,
+                endTimeUtc,
+                notes: args.notes,
+                price: service.price,
+            });
+            const eventId = await createGoogleCalendarEvent(staff.googRefreshToken, eventData);
+
+            if (eventId) {
+                booking = await context.entities.Booking.update({
+                    where: { id: booking.id },
+                    data: { googleCalendarEventId: eventId },
+                    include: { customer: true, service: true, staff: true },
+                });
+            }
+        } catch (error) {
+            console.error('Failed to sync booking to Google Calendar:', error);
+            // Don't throw - booking was created successfully, just sync failed
+        }
+    }
 
     return booking;
 };
@@ -824,6 +909,30 @@ export const updateBooking: any = async (args: UpdateBookingArgs, context: any) 
         },
     });
 
+    // Sync update to Google Calendar if event exists
+    if (booking.googleCalendarEventId) {
+        const staff = await context.entities.User.findUnique({
+            where: { id: updatedBooking.staffId },
+        });
+
+        if (staff?.googRefreshToken) {
+            try {
+                const eventData = formatBookingForCalendar({
+                    service: updatedBooking.service,
+                    customer: updatedBooking.customer,
+                    staff: updatedBooking.staff,
+                    startTimeUtc: updatedBooking.startTimeUtc,
+                    endTimeUtc: updatedBooking.endTimeUtc,
+                    notes: updatedBooking.notes,
+                    price: updatedBooking.price,
+                });
+                await updateGoogleCalendarEvent(staff.googRefreshToken, booking.googleCalendarEventId, eventData);
+            } catch (error) {
+                console.error('Failed to update Google Calendar event:', error);
+            }
+        }
+    }
+
     return updatedBooking;
 };
 
@@ -843,6 +952,21 @@ export const deleteBooking: any = async (args: { id: string }, context: any) => 
 
     if (!booking || !user?.businessId || booking.businessId !== user.businessId) {
         throw new Error("Booking not found or access denied");
+    }
+
+    // Delete from Google Calendar if event exists
+    if (booking.googleCalendarEventId) {
+        const staff = await context.entities.User.findUnique({
+            where: { id: booking.staffId },
+        });
+
+        if (staff?.googRefreshToken) {
+            try {
+                await deleteGoogleCalendarEvent(staff.googRefreshToken, booking.googleCalendarEventId);
+            } catch (error) {
+                console.error('Failed to delete Google Calendar event:', error);
+            }
+        }
     }
 
     await context.entities.Booking.delete({
@@ -1043,4 +1167,63 @@ export const deleteReview: DeleteReview<{ id: string }, any> = async (args, cont
     });
 
     return { success: true };
+};
+
+export const getGoogleAuthUrl: GetGoogleAuthUrl<void, string> = async (_args, context) => {
+    if (!context.user) throw new Error("Not authorized");
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const redirectUri = `${process.env.WASP_WEB_SERVER_URL}/google/callback`;
+    const scope = 'https://www.googleapis.com/auth/calendar';
+
+    // Encode user ID in state to preserve identity across redirect
+    const state = Buffer.from(JSON.stringify({ userId: context.user.id })).toString('base64');
+
+    const params = new URLSearchParams({
+        client_id: clientId!,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        scope: scope,
+        access_type: 'offline',
+        prompt: 'consent',
+        state: state, // Pass user ID through the redirect
+    });
+
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+};
+
+export const getGoogleCalendarStatus: any = async (_args: {}, context: any) => {
+    if (!context.user) throw new Error("Not authorized");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id }
+    });
+
+    return { isConnected: !!user?.googRefreshToken };
+};
+
+export const getGoogleCalendarEvents: any = async (args: { timeMin: string; timeMax: string }, context: any) => {
+    if (!context.user) throw new Error("Not authorized");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id }
+    });
+
+    if (!user?.googRefreshToken) {
+        return { events: [] };
+    }
+
+    try {
+        const { fetchGoogleCalendarEvents } = await import('../server/integrations/googleCalendar');
+        const events = await fetchGoogleCalendarEvents(
+            user.googRefreshToken,
+            new Date(args.timeMin),
+            new Date(args.timeMax)
+        );
+
+        return { events };
+    } catch (error) {
+        console.error('Error fetching Google Calendar events:', error);
+        return { events: [] };
+    }
 };

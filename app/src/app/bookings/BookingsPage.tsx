@@ -31,7 +31,7 @@ export default function BookingsPage() {
     const [serviceFilter, setStatusService] = useState("all");
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
-    const baseUrl = import.meta.env.REACT_APP_BASE_URL || window.location.origin;
+    const baseUrl = import.meta.env.WASP_WEB_CLIENT_URL || window.location.origin;
     const bookingUrl = user?.slug ? `${baseUrl}/book/${user.slug}` : "";
 
     // Get unique services and staff for filter dropdowns

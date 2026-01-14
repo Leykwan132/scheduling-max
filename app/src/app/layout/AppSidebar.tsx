@@ -18,7 +18,9 @@ import {
     ClipboardList,
     Building2,
     Star,
-    LayoutList
+    LayoutList,
+    Clock2,
+    Briefcase
 } from "lucide-react";
 import { useAuth, logout } from "wasp/client/auth";
 import logo from "../../client/static/logo.webp";
@@ -87,6 +89,16 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                     name: "Business",
                     href: "/app/setup",
                     icon: Building2,
+                },
+                {
+                    name: "Services",
+                    href: "/app/services",
+                    icon: Briefcase,
+                },
+                {
+                    name: "Availability",
+                    href: "/app/availability",
+                    icon: Clock2,
                 },
                 {
                     name: "Bookings",
