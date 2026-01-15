@@ -11,10 +11,10 @@ export default function Hero() {
                 <div className="text-left space-y-6">
                     {/* Main Headline - Bold & Heavy */}
                     <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-foreground leading-[0.9]">
-                        MORE VALUE THAN ACUITY.
+                        BETTER THAN ACUITY.
                         <br />
                         <span className="text-primary-foreground bg-primary inline-block px-2 transform -rotate-1 mt-2">
-                            LESS USAGE COST.
+                            LOWER COST.
                         </span>
                     </h1>
 

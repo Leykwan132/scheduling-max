@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import DashboardLayout from "../layout/DashboardLayout";
 import { useAuth } from "wasp/client/auth";
-import { getBusinessByUser, disconnectGoogleCalendar, updateIntegrations, getGoogleAuthUrl } from "wasp/client/operations";
+import { getBusinessByUser, disconnectGoogleCalendar, updateIntegrations, getGoogleAuthUrl, createStripeAccount, getStripeOnboardingLink, disconnectStripe } from "wasp/client/operations";
 import { useQuery, useAction } from "wasp/client/operations";
 import { Calendar, Link2, Check, Zap } from "lucide-react";
 import ConfirmDisconnectModal from "./ConfirmDisconnectModal";
@@ -12,6 +12,9 @@ export default function IntegrationsPage() {
     const { data: business, refetch } = useQuery(getBusinessByUser);
     const updateIntegrationsFn = useAction(updateIntegrations);
     const disconnectGoogleFn = useAction(disconnectGoogleCalendar);
+    const createStripeAccountFn = useAction(createStripeAccount);
+    const getStripeOnboardingLinkFn = useAction(getStripeOnboardingLink);
+    const disconnectStripeFn = useAction(disconnectStripe);
 
     const [modalState, setModalState] = useState<{
         isOpen: boolean;
@@ -22,6 +25,8 @@ export default function IntegrationsPage() {
         integration: null,
         isLoading: false,
     });
+
+    const [isConnectingStripe, setIsConnectingStripe] = useState(false);
 
     const handleIntegrationToggle = async (key: 'google' | 'stripe', currentValue: boolean) => {
         try {
@@ -36,9 +41,26 @@ export default function IntegrationsPage() {
                 }
             } else {
                 if (!currentValue) {
-                    // Connect Stripe (placeholder)
-                    await updateIntegrationsFn({ isStripeConnected: true });
-                    await refetch();
+                    setIsConnectingStripe(true);
+                    try {
+                        // Step 1: Create Stripe account (if not exists)
+                        await createStripeAccountFn({});
+
+                        // Step 2: Get onboarding link
+                        const linkResult: any = await getStripeOnboardingLinkFn({});
+
+                        if (linkResult.onboardingUrl) {
+                            // Redirect to Stripe onboarding
+                            window.location.href = linkResult.onboardingUrl;
+                        } else {
+                            // Unexpected - refresh the page
+                            await refetch();
+                            setIsConnectingStripe(false);
+                        }
+                    } catch (err) {
+                        setIsConnectingStripe(false);
+                        throw err;
+                    }
                 } else {
                     // Show confirmation modal for Stripe
                     setModalState({ isOpen: true, integration: 'stripe', isLoading: false });
@@ -46,7 +68,7 @@ export default function IntegrationsPage() {
             }
         } catch (error) {
             console.error("Failed to update integration:", error);
-            alert("Failed to update integration settings.");
+            alert(`Failed to ${currentValue ? 'disconnect' : 'connect'} ${key === 'google' ? 'Google Calendar' : 'Stripe'}. Please try again.`);
         }
     };
 
@@ -57,7 +79,7 @@ export default function IntegrationsPage() {
             if (modalState.integration === 'google') {
                 await disconnectGoogleFn({});
             } else if (modalState.integration === 'stripe') {
-                await updateIntegrationsFn({ isStripeConnected: false });
+                await disconnectStripeFn({});
             }
 
             // Refetch business data to update UI
@@ -166,6 +188,29 @@ export default function IntegrationsPage() {
                 integrationName={modalState.integration === 'google' ? 'Google Calendar' : 'Stripe'}
                 isLoading={modalState.isLoading}
             />
+
+            {/* Loading Modal for Connecting Stripe */}
+            {isConnectingStripe && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+                    <div className="relative bg-background border-4 border-black p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-sm w-full text-center">
+                        <div className="flex flex-col items-center gap-6">
+                            <div className="relative">
+                                <div className="size-16 border-4 border-black border-t-primary rounded-full animate-spin" />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <Link2 className="size-6" />
+                                </div>
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black uppercase mb-2">Connecting Stripe</h3>
+                                <p className="text-muted-foreground font-medium">
+                                    Please wait while we set up your Stripe account and prepare the onboarding...
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </DashboardLayout>
     );
 }

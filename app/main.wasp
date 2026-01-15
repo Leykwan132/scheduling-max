@@ -256,6 +256,21 @@ action disconnectGoogleCalendar {
   entities: [Business, User]
 }
 
+action createStripeAccount {
+  fn: import { createStripeAccount } from "@src/app/operations",
+  entities: [Business, User]
+}
+
+action getStripeOnboardingLink {
+  fn: import { getStripeOnboardingLink } from "@src/app/operations",
+  entities: [Business, User]
+}
+
+action disconnectStripe {
+  fn: import { disconnectStripe } from "@src/app/operations",
+  entities: [Business, User]
+}
+
 action updateUserProfile {
   fn: import { updateUserProfile } from "@src/app/operations",
   entities: [User]

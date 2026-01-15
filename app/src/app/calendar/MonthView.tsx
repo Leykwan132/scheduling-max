@@ -13,6 +13,7 @@ interface Appointment {
     duration?: string;
     staff?: string;
     phone?: string;
+    isAllDay?: boolean;
     colors?: {
         bg: string;
         border: string;
@@ -142,7 +143,7 @@ export default function MonthView({ currentDate, appointments, onAppointmentClic
                                                     isPast && "opacity-40"
                                                 )}
                                             >
-                                                {apt.client.split(' ')[0]} • {timeRange}
+                                                {apt.client.split(' ')[0]} • {apt.isAllDay ? "All Day" : timeRange}
                                             </div>
                                         );
                                     })}
@@ -217,7 +218,7 @@ export default function MonthView({ currentDate, appointments, onAppointmentClic
                                             )}
                                         >
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="font-bold text-sm">{timeRange}</span>
+                                                <span className="font-bold text-sm">{apt.isAllDay ? "All Day" : timeRange}</span>
                                                 <span className={cn(
                                                     "text-[10px] font-bold uppercase px-1.5 py-0.5 border border-black/20 rounded-sm bg-white/50"
                                                 )}>

@@ -130,13 +130,23 @@ export default function CalendarPage() {
     const googleAppointments = ((googleEventsData as any)?.events || []).map((event: any) => {
         const start = new Date(event.start);
         const end = new Date(event.end);
-        const time = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`;
-        const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+
+        let time = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`;
+        let durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+        let isAllDay = false;
+
+        // Handle all-day events (duration >= 24 hours) - force to top of day
+        if (durationMinutes >= 1440) {
+            isAllDay = true;
+            time = "08:00"; // Start at top of grid
+            durationMinutes = 30; // Short height
+        }
 
         return {
             id: `google-${event.id}`,
             time,
             client: event.title,
+            isAllDay,
             service: "Google Calendar",
             serviceId: "google-calendar",
             staff: user?.username || "User",

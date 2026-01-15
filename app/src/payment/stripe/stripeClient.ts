@@ -14,7 +14,7 @@ import { requireNodeEnvVar } from "../../server/utils";
  * Major SDK versions typically correspond to Stripe's biannual releases (like 'basil').
  * Each SDK version uses the API version that was current when it was released.
  *
- * Note: '2025-04-30.basil' follows Stripe's newer versioning format where:
+ * Note: '2025-07-30.basil' follows Stripe's newer versioning format where:
  * - The date represents the release date
  * - The suffix ('basil') indicates the major release name
  *
@@ -23,7 +23,7 @@ import { requireNodeEnvVar } from "../../server/utils";
  * @see https://docs.stripe.com/api/versioning
  * @see https://docs.stripe.com/sdks/versioning
  */
-const STRIPE_API_VERSION = "2025-04-30.basil";
+const STRIPE_API_VERSION = "2025-07-30.basil";
 
 export const stripeClient = new Stripe(requireNodeEnvVar("STRIPE_API_KEY"), {
   apiVersion: STRIPE_API_VERSION,

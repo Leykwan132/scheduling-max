@@ -161,6 +161,7 @@ model Business {
   // Integrations
   isGoogleCalendarConnected Boolean @default(false)
   isStripeConnected         Boolean @default(false)
+  stripeAccountId           String? // Stripe Connect account ID
 
   // Style customization
   styleTemplate       String @default("modern")

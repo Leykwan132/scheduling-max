@@ -12,6 +12,7 @@ interface Appointment {
     date: Date;
     staff?: string;
     phone?: string;
+    isAllDay?: boolean;
     colors?: {
         bg: string;
         border: string;
@@ -255,7 +256,9 @@ export default function WeekView({ currentDate, appointments, onAppointmentClick
                                             )}
                                         >
                                             <p className="truncate font-semibold">{apt.client}</p>
-                                            <p className="truncate opacity-70 text-[9px]">{timeRange}</p>
+                                            <p className="truncate opacity-70 text-[9px]">
+                                                {apt.isAllDay ? "All Day" : timeRange}
+                                            </p>
                                         </div>
                                     );
                                 })}

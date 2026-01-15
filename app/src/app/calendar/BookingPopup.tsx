@@ -13,6 +13,7 @@ interface Appointment {
     date: Date;
     staff?: string;
     phone?: string;
+    isAllDay?: boolean;
     colors?: {
         bg: string;
         border: string;
@@ -193,8 +194,12 @@ export default function BookingPopup({ appointment, position, onClose, onEdit, o
                     <div>
                         <p className="text-xs font-bold uppercase text-muted-foreground">Time</p>
                         <p className="font-bold text-sm">
-                            {formatTimeWithAMPM(appointment.time)}
-                            {appointment.duration && ` • ${appointment.duration}`}
+                            {appointment.isAllDay ? "All Day" : (
+                                <>
+                                    {formatTimeWithAMPM(appointment.time)}
+                                    {appointment.duration && ` • ${appointment.duration}`}
+                                </>
+                            )}
                         </p>
                     </div>
                 </div>

@@ -1,6 +1,7 @@
 import type { GetBusinessByUser, GetServicesByBusinessAndUserId, UpsertBusiness, CreateService, UpdateService, DeleteService, GetBookingsByBusiness, GetBookingsByUser, GetCustomersByBusiness, CreateBooking, GetSchedule, UpdateSchedule, UpdateScheduleOverride, GetPromosByBusiness, CreatePromo, UpdatePromo, DeletePromo, GetCalendarBookings, GetReviewsByBusiness, CreateReview, DeleteReview, GetGoogleAuthUrl } from "wasp/server/operations";
 import { deleteFileFromS3, getDownloadFileSignedURLFromS3 } from "../file-upload/s3Utils";
 import { createGoogleCalendarEvent, updateGoogleCalendarEvent, deleteGoogleCalendarEvent, formatBookingForCalendar } from "../server/integrations/googleCalendar";
+import { createStripeConnectAccount, createAccountLink } from "../server/integrations/stripeConnect";
 
 // Queries
 
@@ -229,6 +230,114 @@ export const disconnectGoogleCalendar: any = async (_args: {}, context: any) => 
         where: { id: user.businessId },
         data: {
             isGoogleCalendarConnected: false,
+        },
+    });
+
+    return { success: true };
+};
+
+export const createStripeAccount: any = async (_args: {}, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+        include: { business: true }
+    });
+
+    if (!user?.businessId || !user.business) throw new Error("Business not found");
+
+    const business = user.business;
+
+    // Check if account already exists
+    if (business.stripeAccountId) {
+        return {
+            success: true,
+            accountId: business.stripeAccountId,
+            message: "Stripe account already exists"
+        };
+    }
+
+    try {
+        // Create Stripe Connect account
+        const stripeAccount = await createStripeConnectAccount({
+            businessName: business.name,
+            contactEmail: business.contactEmail || user.email || "support@example.com",
+            country: "us",
+            currency: "usd"
+        });
+
+        // Update business with Stripe account ID
+        await context.entities.Business.update({
+            where: { id: user.businessId },
+            data: {
+                stripeAccountId: stripeAccount.id,
+                isStripeConnected: true,
+            },
+        });
+
+        return {
+            success: true,
+            accountId: stripeAccount.id,
+        };
+    } catch (error: any) {
+        console.error('Failed to create Stripe account:', error);
+        throw new Error(`Failed to create Stripe account: ${error.message}`);
+    }
+};
+
+export const getStripeOnboardingLink: any = async (_args: {}, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+        include: { business: true }
+    });
+
+    if (!user?.businessId || !user.business) throw new Error("Business not found");
+
+    const business = user.business;
+
+    if (!business.stripeAccountId) {
+        throw new Error("No Stripe account found. Please create a Stripe account first.");
+    }
+
+    try {
+        // Generate fresh onboarding link (expires after 1 hour)
+        const returnUrl = `${process.env.WASP_WEB_CLIENT_URL || 'http://localhost:3000'}/app/integrations?stripe_onboarding=success`;
+        const refreshUrl = `${process.env.WASP_WEB_CLIENT_URL || 'http://localhost:3000'}/app/integrations?stripe_onboarding=refresh`;
+
+        const onboardingUrl = await createAccountLink(
+            business.stripeAccountId,
+            returnUrl,
+            refreshUrl
+        );
+
+        return {
+            success: true,
+            accountId: business.stripeAccountId,
+            onboardingUrl,
+        };
+    } catch (error: any) {
+        console.error('Failed to get Stripe onboarding link:', error);
+        throw new Error(`Failed to get Stripe onboarding link: ${error.message}`);
+    }
+};
+
+export const disconnectStripe: any = async (_args: {}, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) throw new Error("Business not found");
+
+    // Update Business to disconnect Stripe
+    await context.entities.Business.update({
+        where: { id: user.businessId },
+        data: {
+            isStripeConnected: false,
+            stripeAccountId: null,
         },
     });
 
