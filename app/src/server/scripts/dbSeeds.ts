@@ -74,6 +74,7 @@ function generateMockUserData(): MockUserData {
     timezone: "UTC",
     bufferBefore: 0,
     bufferAfter: 0,
+    styleConfig: null,
   };
 }
 

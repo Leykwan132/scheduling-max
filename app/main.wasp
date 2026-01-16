@@ -3,7 +3,7 @@ app OpenSaaS {
     version: "^0.20.0"
   },
 
-  title: "My Open SaaS App",
+  title: "Scheduling Max: Better than Acuity",
 
   head: [
     "<link rel='icon' href='/favicon.ico' />",
@@ -258,17 +258,22 @@ action disconnectGoogleCalendar {
 
 action createStripeAccount {
   fn: import { createStripeAccount } from "@src/app/operations",
-  entities: [Business, User]
+  entities: [Business, User, StripeConnectAccount]
 }
 
 action getStripeOnboardingLink {
   fn: import { getStripeOnboardingLink } from "@src/app/operations",
-  entities: [Business, User]
+  entities: [Business, User, StripeConnectAccount]
 }
 
 action disconnectStripe {
   fn: import { disconnectStripe } from "@src/app/operations",
-  entities: [Business, User]
+  entities: [Business, User, StripeConnectAccount]
+}
+
+query getStripeConnectStatus {
+  fn: import { getStripeConnectStatus } from "@src/app/operations",
+  entities: [Business, User, StripeConnectAccount]
 }
 
 action updateUserProfile {
@@ -454,6 +459,13 @@ api paymentsWebhook {
   entities: [User],
   middlewareConfigFn: import { paymentsMiddlewareConfigFn } from "@src/payment/webhook",
   httpRoute: (POST, "/payments-webhook")
+}
+
+api stripeConnectWebhook {
+  fn: import { stripeConnectWebhook } from "@src/server/integrations/stripeConnectWebhook",
+  entities: [StripeConnectAccount, Business],
+  middlewareConfigFn: import { stripeConnectWebhookMiddleware } from "@src/server/integrations/stripeConnectWebhook",
+  httpRoute: (POST, "/stripe-connect-webhook")
 }
 //#endregion
 

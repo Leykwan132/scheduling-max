@@ -61,6 +61,9 @@ model User {
   reviews   Review[]   @relation("StaffReviews")
 
   googRefreshToken String?
+
+  // Page Style Customization (JSON)
+  styleConfig String? // JSON: template, background, button, font, profile settings
 }
 
 model File {
@@ -159,15 +162,40 @@ model Business {
   isPhoneEnabled        Boolean @default(true)
 
   // Integrations
-  isGoogleCalendarConnected Boolean @default(false)
-  isStripeConnected         Boolean @default(false)
-  stripeAccountId           String? // Stripe Connect account ID
+  isGoogleCalendarConnected Boolean               @default(false)
+  isStripeConnected         Boolean               @default(false)
+  stripeConnectAccount      StripeConnectAccount?
+}
 
-  // Style customization
-  styleTemplate       String @default("modern")
-  styleBackground     String @default("#FDFDFD")
-  stylePrimaryColor   String @default("#FFC857")
-  styleSecondaryColor String @default("#E9F5DB")
+model StripeConnectAccount {
+  id        String   @id // Stripe account ID (acct_xxx)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relation to Business
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId String   @unique
+
+  // Account details
+  displayName     String?
+  country         String  @default("us")
+  defaultCurrency String  @default("usd")
+  dashboardAccess String  @default("full")
+
+  // Onboarding status: not_started, in_progress, pending_review, complete, rejected, requirements_due
+  onboardingStatus String  @default("not_started")
+  disabledReason   String?
+
+  // Requirements
+  requirementsStatus  String? // currently_met, currently_due, past_due
+  pendingRequirements String? // JSON string
+
+  // Capabilities
+  cardPaymentsEnabled Boolean @default(false)
+  transfersEnabled    Boolean @default(false)
+
+  // Metadata
+  lastWebhookAt DateTime?
 }
 
 model Service {

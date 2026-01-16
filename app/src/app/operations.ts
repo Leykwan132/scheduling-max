@@ -241,7 +241,11 @@ export const createStripeAccount: any = async (_args: {}, context: any) => {
 
     const user = await context.entities.User.findUnique({
         where: { id: context.user.id },
-        include: { business: true }
+        include: {
+            business: {
+                include: { stripeConnectAccount: true }
+            }
+        }
     });
 
     if (!user?.businessId || !user.business) throw new Error("Business not found");
@@ -249,10 +253,11 @@ export const createStripeAccount: any = async (_args: {}, context: any) => {
     const business = user.business;
 
     // Check if account already exists
-    if (business.stripeAccountId) {
+    if (business.stripeConnectAccount) {
         return {
             success: true,
-            accountId: business.stripeAccountId,
+            accountId: business.stripeConnectAccount.id,
+            onboardingStatus: business.stripeConnectAccount.onboardingStatus,
             message: "Stripe account already exists"
         };
     }
@@ -266,18 +271,23 @@ export const createStripeAccount: any = async (_args: {}, context: any) => {
             currency: "usd"
         });
 
-        // Update business with Stripe account ID
-        await context.entities.Business.update({
-            where: { id: user.businessId },
+        // Create StripeConnectAccount record
+        await context.entities.StripeConnectAccount.create({
             data: {
-                stripeAccountId: stripeAccount.id,
-                isStripeConnected: true,
+                id: stripeAccount.id,
+                businessId: user.businessId,
+                displayName: business.name,
+                country: "us",
+                defaultCurrency: "usd",
+                dashboardAccess: "full",
+                onboardingStatus: "not_started",
             },
         });
 
         return {
             success: true,
             accountId: stripeAccount.id,
+            onboardingStatus: "not_started",
         };
     } catch (error: any) {
         console.error('Failed to create Stripe account:', error);
@@ -290,14 +300,18 @@ export const getStripeOnboardingLink: any = async (_args: {}, context: any) => {
 
     const user = await context.entities.User.findUnique({
         where: { id: context.user.id },
-        include: { business: true }
+        include: {
+            business: {
+                include: { stripeConnectAccount: true }
+            }
+        }
     });
 
     if (!user?.businessId || !user.business) throw new Error("Business not found");
 
-    const business = user.business;
+    const stripeConnectAccount = user.business.stripeConnectAccount;
 
-    if (!business.stripeAccountId) {
+    if (!stripeConnectAccount) {
         throw new Error("No Stripe account found. Please create a Stripe account first.");
     }
 
@@ -307,14 +321,21 @@ export const getStripeOnboardingLink: any = async (_args: {}, context: any) => {
         const refreshUrl = `${process.env.WASP_WEB_CLIENT_URL || 'http://localhost:3000'}/app/integrations?stripe_onboarding=refresh`;
 
         const onboardingUrl = await createAccountLink(
-            business.stripeAccountId,
+            stripeConnectAccount.id,
             returnUrl,
             refreshUrl
         );
 
+        // Update onboarding status to in_progress
+        await context.entities.StripeConnectAccount.update({
+            where: { id: stripeConnectAccount.id },
+            data: { onboardingStatus: "in_progress" },
+        });
+
         return {
             success: true,
-            accountId: business.stripeAccountId,
+            accountId: stripeConnectAccount.id,
+            onboardingStatus: "in_progress",
             onboardingUrl,
         };
     } catch (error: any) {
@@ -328,20 +349,70 @@ export const disconnectStripe: any = async (_args: {}, context: any) => {
 
     const user = await context.entities.User.findUnique({
         where: { id: context.user.id },
+        include: {
+            business: {
+                include: { stripeConnectAccount: true }
+            }
+        }
     });
 
     if (!user?.businessId) throw new Error("Business not found");
+
+    // Delete StripeConnectAccount if exists
+    if (user.business?.stripeConnectAccount) {
+        await context.entities.StripeConnectAccount.delete({
+            where: { id: user.business.stripeConnectAccount.id },
+        });
+    }
 
     // Update Business to disconnect Stripe
     await context.entities.Business.update({
         where: { id: user.businessId },
         data: {
             isStripeConnected: false,
-            stripeAccountId: null,
         },
     });
 
     return { success: true };
+};
+
+export const getStripeConnectStatus: any = async (_args: {}, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+        include: {
+            business: {
+                include: { stripeConnectAccount: true }
+            }
+        }
+    });
+
+    if (!user?.businessId || !user.business) throw new Error("Business not found");
+
+    const stripeConnectAccount = user.business.stripeConnectAccount;
+
+    if (!stripeConnectAccount) {
+        return {
+            hasAccount: false,
+            onboardingStatus: null,
+            isConnected: false,
+        };
+    }
+
+    return {
+        hasAccount: true,
+        accountId: stripeConnectAccount.id,
+        onboardingStatus: stripeConnectAccount.onboardingStatus,
+        disabledReason: stripeConnectAccount.disabledReason,
+        requirementsStatus: stripeConnectAccount.requirementsStatus,
+        pendingRequirements: stripeConnectAccount.pendingRequirements
+            ? JSON.parse(stripeConnectAccount.pendingRequirements)
+            : [],
+        cardPaymentsEnabled: stripeConnectAccount.cardPaymentsEnabled,
+        isConnected: stripeConnectAccount.onboardingStatus === "complete",
+        lastWebhookAt: stripeConnectAccount.lastWebhookAt,
+    };
 };
 
 type UpdateUserProfileArgs = {
@@ -356,6 +427,7 @@ type UpdateUserProfileArgs = {
     timezone?: string;
     bufferBefore?: number;
     bufferAfter?: number;
+    styleConfig?: string; // JSON string for page customization
 };
 
 export const updateUserProfile: any = async (args: UpdateUserProfileArgs, context: any) => {
@@ -378,6 +450,7 @@ export const updateUserProfile: any = async (args: UpdateUserProfileArgs, contex
             ...(args.timezone !== undefined && { timezone: args.timezone }),
             ...(args.bufferBefore !== undefined && { bufferBefore: args.bufferBefore }),
             ...(args.bufferAfter !== undefined && { bufferAfter: args.bufferAfter }),
+            ...(args.styleConfig !== undefined && { styleConfig: args.styleConfig }),
         },
     });
 };

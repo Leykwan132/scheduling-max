@@ -1,15 +1,28 @@
 import React, { useState } from "react";
 import DashboardLayout from "../layout/DashboardLayout";
 import { useAuth } from "wasp/client/auth";
-import { getBusinessByUser, disconnectGoogleCalendar, updateIntegrations, getGoogleAuthUrl, createStripeAccount, getStripeOnboardingLink, disconnectStripe } from "wasp/client/operations";
+import { getBusinessByUser, disconnectGoogleCalendar, updateIntegrations, getGoogleAuthUrl, createStripeAccount, getStripeOnboardingLink, disconnectStripe, getStripeConnectStatus } from "wasp/client/operations";
 import { useQuery, useAction } from "wasp/client/operations";
-import { Calendar, Link2, Check, Zap } from "lucide-react";
+import { Calendar, Link2, Check, Zap, AlertCircle, Clock, XCircle } from "lucide-react";
 import ConfirmDisconnectModal from "./ConfirmDisconnectModal";
+
+type StripeConnectStatus = {
+    hasAccount: boolean;
+    accountId?: string;
+    onboardingStatus?: string;
+    disabledReason?: string | null;
+    requirementsStatus?: string | null;
+    pendingRequirements?: string[];
+    cardPaymentsEnabled?: boolean;
+    isConnected: boolean;
+    lastWebhookAt?: Date | null;
+};
 
 export default function IntegrationsPage() {
     const { data: user } = useAuth();
 
     const { data: business, refetch } = useQuery(getBusinessByUser);
+    const { data: stripeStatus, refetch: refetchStripeStatus } = useQuery(getStripeConnectStatus) as unknown as { data: StripeConnectStatus | undefined, refetch: () => void };
     const updateIntegrationsFn = useAction(updateIntegrations);
     const disconnectGoogleFn = useAction(disconnectGoogleCalendar);
     const createStripeAccountFn = useAction(createStripeAccount);
@@ -94,6 +107,87 @@ export default function IntegrationsPage() {
         }
     };
 
+    // Get status badge for Stripe based on onboarding status
+    const getStripeStatusBadge = () => {
+        if (!stripeStatus?.hasAccount) return null;
+
+        const status = stripeStatus.onboardingStatus;
+
+        switch (status) {
+            case "complete":
+                return (
+                    <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 border border-green-200 uppercase flex items-center gap-1">
+                        <Check className="size-3" />
+                        Connected
+                    </span>
+                );
+            case "in_progress":
+                return (
+                    <span className="text-[10px] font-bold bg-yellow-100 text-yellow-700 px-2 py-0.5 border border-yellow-200 uppercase flex items-center gap-1">
+                        <Clock className="size-3" />
+                        In Progress
+                    </span>
+                );
+            case "pending_review":
+                return (
+                    <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 border border-blue-200 uppercase flex items-center gap-1">
+                        <Clock className="size-3" />
+                        Pending Review
+                    </span>
+                );
+            case "requirements_due":
+                return (
+                    <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 border border-orange-200 uppercase flex items-center gap-1">
+                        <AlertCircle className="size-3" />
+                        Action Required
+                    </span>
+                );
+            case "rejected":
+                return (
+                    <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 border border-red-200 uppercase flex items-center gap-1">
+                        <XCircle className="size-3" />
+                        Rejected
+                    </span>
+                );
+            case "not_started":
+                return (
+                    <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-0.5 border border-gray-200 uppercase flex items-center gap-1">
+                        <Clock className="size-3" />
+                        Setup Pending
+                    </span>
+                );
+            default:
+                return null;
+        }
+    };
+
+    // Get button label and style for Stripe
+    const getStripeButtonConfig = () => {
+        if (!stripeStatus?.hasAccount) {
+            return { label: "Connect", isDisconnect: false };
+        }
+
+        const status = stripeStatus.onboardingStatus;
+
+        switch (status) {
+            case "complete":
+                return { label: "Disconnect", isDisconnect: true };
+            case "in_progress":
+            case "not_started":
+                return { label: "Continue Setup", isDisconnect: false };
+            case "pending_review":
+                return { label: "Check Status", isDisconnect: false };
+            case "requirements_due":
+                return { label: "Update Info", isDisconnect: false };
+            case "rejected":
+                return { label: "Retry", isDisconnect: false };
+            default:
+                return { label: "Connect", isDisconnect: false };
+        }
+    };
+
+    const stripeButtonConfig = getStripeButtonConfig();
+
     const integrations = [
         {
             id: 'google',
@@ -103,15 +197,28 @@ export default function IntegrationsPage() {
             action: () => handleIntegrationToggle('google', !!business?.isGoogleCalendarConnected),
             isConnected: !!business?.isGoogleCalendarConnected,
             comingSoon: false,
+            statusBadge: business?.isGoogleCalendarConnected ? (
+                <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 border border-green-200 uppercase flex items-center gap-1">
+                    <Check className="size-3" />
+                    Connected
+                </span>
+            ) : null,
+            buttonLabel: business?.isGoogleCalendarConnected ? "Disconnect" : "Connect",
+            showDisconnectStyle: !!business?.isGoogleCalendarConnected,
         },
         {
             id: 'stripe',
             icon: Link2,
             label: "Stripe",
-            description: "Accept payments securely from your customers.",
-            action: () => handleIntegrationToggle('stripe', !!business?.isStripeConnected),
-            isConnected: !!business?.isStripeConnected,
+            description: stripeStatus?.disabledReason
+                ? `Connection failed: ${stripeStatus.disabledReason}`
+                : "Accept payments securely from your customers.",
+            action: () => handleIntegrationToggle('stripe', stripeButtonConfig.isDisconnect),
+            isConnected: stripeStatus?.onboardingStatus === "complete",
             comingSoon: false,
+            statusBadge: getStripeStatusBadge(),
+            buttonLabel: stripeButtonConfig.label,
+            showDisconnectStyle: stripeButtonConfig.isDisconnect,
         },
     ];
 
@@ -141,7 +248,7 @@ export default function IntegrationsPage() {
                                     <item.icon className="size-6" />
                                 </div>
                                 <div>
-                                    <div className="flex items-center gap-2 mb-1">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                                         <h3 className="font-black uppercase text-lg">
                                             {item.label}
                                         </h3>
@@ -150,12 +257,7 @@ export default function IntegrationsPage() {
                                                 Coming Soon
                                             </span>
                                         )}
-                                        {item.isConnected && (
-                                            <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 border border-green-200 uppercase flex items-center gap-1">
-                                                <Check className="size-3" />
-                                                Connected
-                                            </span>
-                                        )}
+                                        {item.statusBadge}
                                     </div>
                                     <p className="text-sm text-muted-foreground font-medium max-w-md">
                                         {item.description}
@@ -167,13 +269,13 @@ export default function IntegrationsPage() {
                                 onClick={item.action}
                                 className={`
                                     px-6 py-2.5 font-bold text-sm uppercase border-2 border-black transition-all whitespace-nowrap
-                                    ${item.isConnected
+                                    ${item.showDisconnectStyle
                                         ? "bg-red-50 text-red-600 hover:bg-red-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px]"
                                         : "bg-primary text-black hover:bg-primary/90 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] active:shadow-none active:translate-x-[2px] active:translate-y-[2px]"
                                     }
                                 `}
                             >
-                                {item.isConnected ? "Disconnect" : "Connect"}
+                                {item.buttonLabel}
                             </button>
                         </div>
                     ))}

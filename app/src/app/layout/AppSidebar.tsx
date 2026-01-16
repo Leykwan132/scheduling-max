@@ -15,6 +15,7 @@ import {
     Settings,
     ChevronDown,
     ChevronRight,
+    ChevronLeft,
     ClipboardList,
     Building2,
     Star,
@@ -34,6 +35,7 @@ interface SidebarProps {
 const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
     const { data: user } = useAuth();
     const location = useLocation();
+    const [isCollapsed, setIsCollapsed] = useState(false);
 
     const trigger = useRef<any>(null);
     const sidebar = useRef<any>(null);
@@ -163,22 +165,36 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
             <aside
                 ref={sidebar}
                 className={cn(
-                    "fixed lg:static z-40 h-screen w-64 bg-background border-r-2 border-black transition-all duration-300 ease-in-out flex flex-col relative",
+                    "fixed lg:static z-40 h-screen bg-background border-r-2 border-black transition-all duration-300 ease-in-out flex flex-col relative",
+                    isCollapsed ? "lg:w-20" : "lg:w-64",
                     {
                         "translate-x-0": sidebarOpen,
                         "-translate-x-full lg:translate-x-0": !sidebarOpen,
                     }
                 )}
             >
+                {/* Desktop Collapse Toggle */}
+                <button
+                    onClick={() => setIsCollapsed(!isCollapsed)}
+                    className="absolute -right-3 top-8 z-50 hidden lg:flex size-6 items-center justify-center rounded-full bg-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[1px] hover:translate-y-[1px] transition-all"
+                >
+                    {isCollapsed ? <ChevronRight className="size-3" /> : <ChevronLeft className="size-3" />}
+                </button>
+
                 {/* Header */}
-                <div className="flex items-center justify-start p-4 border-b-2 border-black">
+                <div className={cn(
+                    "flex items-center p-4 border-b-2 border-black transition-all",
+                    isCollapsed ? "justify-center" : "justify-start"
+                )}>
                     <WaspRouterLink to={routes.LandingPageRoute.to} className="flex items-center gap-2 overflow-hidden">
                         <div className="bg-primary p-1.5 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex-shrink-0">
-                            <img src={logo} alt="Logo" className="w-5 h-5" />
+                            <img src={logo} alt="Logo" className="size-5" />
                         </div>
-                        <span className="font-black text-sm tracking-tight uppercase truncate">
-                            ScheduleMax
-                        </span>
+                        {!isCollapsed && (
+                            <span className="font-black text-sm tracking-tight uppercase truncate animate-in fade-in duration-300">
+                                ScheduleMax
+                            </span>
+                        )}
                     </WaspRouterLink>
 
                     {/* Mobile Close Button */}
@@ -191,14 +207,19 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                 </div>
 
                 {/* Navigation */}
-                <nav className="flex-1 overflow-y-auto p-3 min-h-0">
+                <nav className="flex-1 overflow-y-auto p-3 min-h-0 no-scrollbar">
                     {navGroups.map((group) => (
                         <div key={group.key} className="mb-2">
                             {/* Group Label */}
-                            {group.label && (
-                                <div className="w-full px-3 py-2 text-xs font-black uppercase tracking-widest text-muted-foreground">
+                            {group.label && !isCollapsed && (
+                                <div className="w-full px-3 py-2 text-xs font-black uppercase tracking-widest text-muted-foreground animate-in fade-in duration-300">
                                     {group.label}
                                 </div>
+                            )}
+
+                            {/* Separator for collapsed functionality if needed, or just space */}
+                            {group.label && isCollapsed && (
+                                <div className="h-4" />
                             )}
 
                             {/* Group Items */}
@@ -208,6 +229,7 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                                         <NavLink
                                             to={item.href}
                                             end={item.href === "/app"}
+                                            title={isCollapsed ? item.name : undefined}
                                             onClick={(e) => {
                                                 // Only close sidebar on mobile (< 1024px)
                                                 if (window.innerWidth < 1024) {
@@ -217,6 +239,7 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                                             className={({ isActive }) =>
                                                 cn(
                                                     "flex items-center gap-3 px-3 py-2.5 font-bold text-sm tracking-wide border-2 border-transparent transition-all",
+                                                    isCollapsed ? "justify-center px-1" : "",
                                                     {
                                                         "bg-primary text-black border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]":
                                                             isActive,
@@ -226,7 +249,7 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                                             }
                                         >
                                             <item.icon className="size-5 flex-shrink-0" />
-                                            <span className="truncate">{item.name}</span>
+                                            {!isCollapsed && <span className="truncate animate-in fade-in duration-300">{item.name}</span>}
                                         </NavLink>
                                     </li>
                                 ))}
@@ -239,25 +262,31 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                 <div className="border-t-2 border-black bg-muted/30 mt-auto">
                     {/* User Info */}
                     {user && (
-                        <div className="flex items-center gap-3 p-4">
+                        <div className={cn("flex items-center gap-3 p-4", isCollapsed ? "justify-center p-2" : "")}>
                             <div className="bg-primary p-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex-shrink-0">
                                 <User size={16} className="text-black" />
                             </div>
-                            <div className="overflow-hidden flex-1">
-                                <p className="text-xs font-black uppercase truncate text-black">{user.username || user.email}</p>
-                                <p className="text-[10px] font-bold text-muted-foreground uppercase">Pro Account</p>
-                            </div>
+                            {!isCollapsed && (
+                                <div className="overflow-hidden flex-1 animate-in fade-in duration-300">
+                                    <p className="text-xs font-black uppercase truncate text-black">{user.username || user.email}</p>
+                                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Pro Account</p>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     {/* Logout Button */}
-                    <div className="p-3 pt-0">
+                    <div className={cn("p-3 pt-0", isCollapsed ? "px-2" : "")}>
                         <button
                             onClick={() => logout()}
-                            className="w-full flex items-center gap-3 px-3 py-2 font-black text-[11px] uppercase tracking-wide border-2 border-black bg-red-500 text-white hover:bg-red-600 transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[2px] active:translate-y-[2px]"
+                            title={isCollapsed ? "Sign Out" : undefined}
+                            className={cn(
+                                "w-full flex items-center gap-3 px-3 py-2 font-black text-[11px] uppercase tracking-wide border-2 border-black bg-red-500 text-white hover:bg-red-600 transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[2px] active:translate-y-[2px]",
+                                isCollapsed ? "justify-center px-0" : ""
+                            )}
                         >
                             <LogOut className="size-3.5" />
-                            <span>Sign Out</span>
+                            {!isCollapsed && <span className="animate-in fade-in duration-300">Sign Out</span>}
                         </button>
                     </div>
                 </div>
