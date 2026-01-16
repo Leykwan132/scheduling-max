@@ -73,7 +73,7 @@ export default function ComparisonTable() {
                                     <th className="p-6 text-sm font-black uppercase tracking-widest text-center text-muted-foreground bg-zinc-50 dark:bg-zinc-800/50">Cal.com</th>
                                     <th className="p-6 text-sm font-black uppercase tracking-widest text-center text-muted-foreground bg-zinc-50 dark:bg-zinc-800/50 border-r-2 border-black dark:border-white">Acuity</th>
                                     <th className="p-6 text-lg font-black uppercase italic tracking-tighter text-center text-black bg-primary">
-                                        ScheduleMax
+                                        MorphScheduling
                                     </th>
                                 </tr>
                             </thead>

@@ -15,7 +15,9 @@ export type StyleTemplate =
     | "vogue"
     | "brutalist"
     | "midnight"
-    | "serene";
+    | "serene"
+    | "poster_warm"
+    | "poster_cool";
 
 // Background options
 export type BackgroundType = "solid" | "gradient";
@@ -51,6 +53,8 @@ export interface ProfileConfig {
     bioSize?: "small" | "medium" | "large";
     imageSize: "small" | "medium" | "large";
     imageShape?: "circle" | "rounded" | "square";
+    imageWidth?: "normal" | "full"; // normal = circular/square, full = banner style
+    imagePosition?: "top" | "bottom"; // top = above text, bottom = below text
     imageBorderWidth?: "none" | "thin" | "medium" | "thick";
     imageBorderColor?: string;
     titleEnabled?: boolean;
@@ -69,6 +73,8 @@ export interface ServiceButtonConfig {
 export interface SocialButtonConfig {
     color?: string;
     textColor?: string;
+    style?: ButtonStyle;
+    shape?: ButtonShape;
 }
 
 // Complete style configuration
@@ -81,7 +87,9 @@ export interface StyleConfig {
     serviceButton: ServiceButtonConfig;
     socialButton?: SocialButtonConfig;
     cardBackgroundColor?: string; // Optional override for card/input backgrounds
-    cardStyle?: "default" | "left-border" | "minimal"; // New card style options
+    cardTextColor?: string; // Optional override for card text
+    cardStyle?: "default" | "left-border" | "minimal" | "fill" | "outline" | "soft-shadow" | "hard-shadow";
+    cardShape?: ButtonShape;
 }
 
 // Default configurations per template
@@ -294,6 +302,57 @@ export const TEMPLATE_DEFAULTS: Record<StyleTemplate, StyleConfig> = {
         serviceButton: { enabled: true, text: "Schedule" },
         cardBackgroundColor: "#FFFFFF",
         cardStyle: "default"
+    },
+
+    // 13. Poster Warm (Anthropic-inspired Minimal)
+    poster_warm: {
+        template: "poster_warm",
+        background: { type: "solid", color: "#F9F7F5" }, // Warm Alabaster
+        button: { color: "#E63946", textColor: "#FFFFFF", style: "fill", shape: "rounded" }, // Vibrant Red
+        font: { family: "instrument-serif", color: "#111111" }, // Sharp Black
+        profile: {
+            titleColor: "#111111",
+            bioColor: "#666666",
+            titleSize: "medium",
+            imageSize: "medium",
+            imageShape: "rounded",
+            imageWidth: "full",
+            imagePosition: "bottom",
+            imageBorderWidth: "none",
+            titleEnabled: true,
+            subtitleEnabled: false,
+            socialEnabled: false,
+            socialPosition: "bottom"
+        },
+        serviceButton: { enabled: true, text: "Book", color: "#E63946", textColor: "#FFFFFF" },
+        cardStyle: "default",
+        cardBackgroundColor: "#FFFFFF",
+        cardShape: "rounded"
+    },
+    // 14. Poster Cool (Cool/Blue Variation)
+    poster_cool: {
+        template: "poster_cool",
+        background: { type: "solid", color: "#F0F4F8" }, // Cool gray/blue paper
+        button: { color: "#3182CE", textColor: "#FFFFFF", style: "fill", shape: "rounded" }, // Blue
+        font: { family: "inter", color: "#1A202C" },
+        profile: {
+            titleColor: "#1A202C",
+            bioColor: "#4A5568",
+            titleSize: "medium",
+            imageSize: "medium",
+            imageShape: "circle",
+            imageWidth: "full",
+            imagePosition: "bottom",
+            imageBorderWidth: "none",
+            titleEnabled: true,
+            subtitleEnabled: false,
+            socialEnabled: false,
+            socialPosition: "bottom"
+        },
+        serviceButton: { enabled: true, text: "Book", color: "#3182CE", textColor: "#FFFFFF" },
+        cardStyle: "default",
+        cardBackgroundColor: "#FFFFFF",
+        cardShape: "rounded"
     }
 };
 
@@ -370,11 +429,11 @@ export const FONT_CSS: Record<FontFamily, { name: string; import: string }> = {
 
 
 // Generate button CSS classes based on config
-export function getButtonStyles(config: ButtonConfig): React.CSSProperties {
+export function getButtonStyles(config: Partial<ButtonConfig> & { style?: ButtonStyle | string; shape?: ButtonShape | string }): React.CSSProperties {
     const base: React.CSSProperties = {
-        backgroundColor: config.style === "outline" ? "transparent" : config.color,
-        color: config.textColor,
-        borderColor: config.color,
+        backgroundColor: config.style === "outline" ? "transparent" : (config.color || "black"),
+        color: config.textColor || "white",
+        borderColor: config.color || "black",
         borderWidth: "2px",
         borderStyle: "solid"
     };
@@ -398,116 +457,161 @@ export function getButtonStyles(config: ButtonConfig): React.CSSProperties {
 
 // Generate container CSS classes based on template
 export function getContainerStyles(config: StyleConfig): React.CSSProperties {
-    const { template, cardBackgroundColor, cardStyle, button } = config;
+    const { template, cardBackgroundColor, cardTextColor, cardStyle, button, cardShape } = config;
 
     // Base container style
     const baseStyle: React.CSSProperties = {
         backgroundColor: cardBackgroundColor || "white",
+        color: cardTextColor, // Apply text color if set
         borderRadius: "12px",
+        borderColor: "#E5E7EB", // Default border color
+        borderWidth: "0px",
+        borderStyle: "solid",
     };
 
+    // Helper to override shape if provided
+    const applyShape = (style: React.CSSProperties) => {
+        if (cardShape === "square") style.borderRadius = "0px";
+        if (cardShape === "rounded") style.borderRadius = "12px";
+        if (cardShape === "pill") style.borderRadius = "24px";
+        return style;
+    };
+
+    let style = { ...baseStyle };
+
+    // 1. Template Defauts
     if (template === "brutalist") {
-        return {
+        style = {
             ...baseStyle,
-            backgroundColor: "white",
+            backgroundColor: cardBackgroundColor || "white",
             border: "4px solid black",
             boxShadow: "8px 8px 0px 0px rgba(0,0,0,1)",
             borderRadius: "0",
         };
-    }
-
-    if (template === "soft") {
-        return {
+    } else if (template === "soft") {
+        style = {
             ...baseStyle,
-            backgroundColor: "#FFFFFF",
+            backgroundColor: cardBackgroundColor || "#FFFFFF",
             boxShadow: "0 4px 20px -2px rgba(0,0,0,0.05)",
             border: "1px solid rgba(0,0,0,0.02)",
             borderRadius: "16px"
         };
-    }
-
-    if (template === "vogue") {
-        return {
+    } else if (template === "vogue") {
+        style = {
             ...baseStyle,
             borderRadius: "0px",
             border: "1px solid #CCCCCC",
             boxShadow: "none"
         };
-    }
-
-    // Left Border Style (OpenAI / Midnight)
-    if (cardStyle === "left-border") {
-        return {
-            ...baseStyle,
-            borderRadius: "2px",
-            borderLeft: `4px solid ${button.color}`,
-            borderTop: "none",
-            borderRight: "none",
-            borderBottom: "none",
-            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
-            paddingLeft: "16px"
-        };
-    }
-
-    // Minimal Style
-    if (cardStyle === "minimal") {
-        return {
-            ...baseStyle,
-            backgroundColor: "transparent",
-            borderBottom: "1px solid #E5E5E5",
-            borderRadius: "0",
-            padding: "16px 0",
-            boxShadow: "none",
-        }
-    }
-
-    if (template === "tesla") {
-        return {
+    } else if (template === "tesla") {
+        style = {
             ...baseStyle,
             border: "1px solid #333333",
             boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.5)",
         };
-    }
-
-    if (template === "midnight") {
-        return {
+    } else if (template === "midnight") {
+        style = {
             ...baseStyle,
             border: "1px solid rgba(255,255,255,0.1)",
             boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.5)",
         };
-    }
-
-    if (template === "apple") {
-        return {
+    } else if (template === "apple") {
+        style = {
             ...baseStyle,
             borderRadius: "24px",
             border: "1px solid rgba(0,0,0,0.05)",
             boxShadow: "0 10px 40px -10px rgba(0,0,0,0.05)",
         };
-    }
-
-    if (template === "anthropic") {
-        return {
+    } else if (template === "anthropic" || template === "poster_warm") {
+        style = {
             ...baseStyle,
             borderRadius: "8px",
             border: "1px solid #E6E1D8",
             boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.05)",
         };
-    }
-
-    if (template === "serene") {
-        return {
+    } else if (template === "poster_cool") {
+        style = {
+            ...baseStyle,
+            borderRadius: "8px",
+            border: "1px solid #E2E8F0",
+            boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.05)",
+        };
+    } else if (template === "serene") {
+        style = {
             ...baseStyle,
             borderRadius: "16px",
             border: "none",
             boxShadow: "inset 0 2px 4px 0 rgba(0,0,0,0.02)"
         };
+    } else {
+        // Default (Modern Minimal)
+        style = {
+            ...baseStyle,
+            border: "1px solid #F3F3F3",
+            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.02)",
+        };
     }
 
-    // Default (Modern Minimal)
-    return {
-        ...baseStyle,
-        border: "1px solid #F3F3F3",
-        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.02)",
-    };
+    // 2. Card Style Overrides (applied after template defaults to allow customization)
+    if (cardStyle === "left-border") {
+        style = {
+            ...style,
+            borderLeft: `4px solid ${button.color}`,
+            borderTop: "none",
+            borderRight: "none",
+            borderBottom: "none",
+            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+            paddingLeft: "16px",
+            borderRadius: "2px"
+        };
+    } else if (cardStyle === "minimal") {
+        style = {
+            ...style,
+            backgroundColor: "transparent",
+            borderBottom: "1px solid #E5E5E5",
+            borderTop: "none",
+            borderLeft: "none",
+            borderRight: "none",
+            borderRadius: "0",
+            padding: "16px 0",
+            boxShadow: "none",
+            marginTop: "0px", // Ensure no gap between items so borders collapse or stack properly
+            marginBottom: "0px"
+        };
+    } else if (cardStyle === "outline") {
+        style = {
+            ...style,
+            backgroundColor: "transparent",
+            border: `2px solid ${cardBackgroundColor || "currentColor"}`, // Use bg color as border color if outlined
+            boxShadow: "none"
+        };
+    } else if (cardStyle === "soft-shadow") {
+        style = {
+            ...style,
+            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)",
+            border: "none"
+        };
+    } else if (cardStyle === "hard-shadow") {
+        style = {
+            ...style,
+            boxShadow: "4px 4px 0px 0px rgba(0,0,0,1)",
+            border: "2px solid black"
+        };
+    } else if (cardStyle === "fill") {
+        // Reset specific borders/shadows if switching back to fill
+        if (style.borderBottom && style.backgroundColor === "transparent") {
+            // likely coming from minimal, reset
+            style.borderBottom = undefined;
+            style.padding = undefined;
+        }
+    }
+
+
+    // 3. User Overrides (Specific Props)
+    if (cardBackgroundColor && cardStyle !== 'minimal' && cardStyle !== 'outline') {
+        style.backgroundColor = cardBackgroundColor;
+    }
+
+    // 4. Shape Override
+    return applyShape(style);
 }

@@ -701,7 +701,7 @@ export default function BusinessSetupPage() {
 
 
                 {/* Header Actions */}
-                <div className="flex justify-between items-center mb-8 border-b-2 border-black pb-4">
+                <div className="flex justify-between items-center pt-16 pb-0 mb-8 border-b-2 border-black">
                     <h2 className="text-xl font-black uppercase flex items-center gap-2">
                         <Edit className="size-5" />
                         Page Editor
@@ -775,6 +775,22 @@ export default function BusinessSetupPage() {
                                                                 ))}
                                                             </div>
                                                             <input type="color" value={styleForm.profile?.imageBorderColor || '#000000'} onChange={(e) => setStyleForm({ ...styleForm, profile: { ...styleForm.profile, imageBorderColor: e.target.value } })} className="size-7 border-2 border-black rounded cursor-pointer p-0 shrink-0" />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[8px] font-bold uppercase text-gray-400 mb-1">Width</label>
+                                                        <div className="grid grid-cols-2 gap-1">
+                                                            {(['normal', 'full'] as const).map((width) => (
+                                                                <button key={width} onClick={() => setStyleForm({ ...styleForm, profile: { ...styleForm.profile, imageWidth: width } })} className={cn("px-2 py-1 text-[8px] font-bold uppercase border border-black transition-all", styleForm.profile?.imageWidth === width || (!styleForm.profile?.imageWidth && width === 'normal') ? "bg-black text-white" : "text-gray-500 hover:bg-gray-50")}>{width}</button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[8px] font-bold uppercase text-gray-400 mb-1">Position</label>
+                                                        <div className="grid grid-cols-2 gap-1">
+                                                            {(['top', 'bottom'] as const).map((position) => (
+                                                                <button key={position} onClick={() => setStyleForm({ ...styleForm, profile: { ...styleForm.profile, imagePosition: position } })} className={cn("px-2 py-1 text-[8px] font-bold uppercase border border-black transition-all", styleForm.profile?.imagePosition === position || (!styleForm.profile?.imagePosition && position === 'top') ? "bg-black text-white" : "text-gray-500 hover:bg-gray-50")}>{position}</button>
+                                                            ))}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -869,17 +885,45 @@ export default function BusinessSetupPage() {
                                             <div className="flex items-center justify-between mb-2">
                                                 <label className="text-[10px] font-bold uppercase text-gray-500">Social Buttons Style</label>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label className="block text-[8px] font-bold uppercase mb-1">Background</label>
-                                                    <div className="flex items-center gap-2">
-                                                        <input type="color" value={styleForm.socialButton?.color || styleForm.button.color} onChange={(e) => setStyleForm({ ...styleForm, socialButton: { ...styleForm.socialButton, color: e.target.value } })} className="w-full h-8 border border-black p-0 cursor-pointer" />
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="block text-[8px] font-bold uppercase mb-1">Background</label>
+                                                        <div className="flex items-center gap-2">
+                                                            <input type="color" value={styleForm.socialButton?.color || styleForm.button.color} onChange={(e) => setStyleForm({ ...styleForm, socialButton: { ...styleForm.socialButton, color: e.target.value } })} className="w-full h-8 border border-black p-0 cursor-pointer" />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[8px] font-bold uppercase mb-1">Icon Color</label>
+                                                        <div className="flex items-center gap-2">
+                                                            <input type="color" value={styleForm.socialButton?.textColor || styleForm.button.textColor} onChange={(e) => setStyleForm({ ...styleForm, socialButton: { ...styleForm.socialButton, textColor: e.target.value } })} className="w-full h-8 border border-black p-0 cursor-pointer" />
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    <label className="block text-[8px] font-bold uppercase mb-1">Icon Color</label>
-                                                    <div className="flex items-center gap-2">
-                                                        <input type="color" value={styleForm.socialButton?.textColor || styleForm.button.textColor} onChange={(e) => setStyleForm({ ...styleForm, socialButton: { ...styleForm.socialButton, textColor: e.target.value } })} className="w-full h-8 border border-black p-0 cursor-pointer" />
+
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="block text-[8px] font-bold uppercase mb-1">Shape</label>
+                                                        <div className="flex bg-white border border-gray-300 rounded p-0.5">
+                                                            {(['square', 'rounded', 'pill'] as ButtonShape[]).map((shape) => (
+                                                                <button key={shape} onClick={() => setStyleForm({ ...styleForm, socialButton: { ...styleForm.socialButton, shape } })} className={cn("flex-1 py-1 text-[8px] font-bold uppercase rounded-sm transition-all", (styleForm.socialButton?.shape || styleForm.button.shape) === shape ? "bg-black text-white" : "text-gray-400 hover:text-black")}>
+                                                                    {shape}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[8px] font-bold uppercase mb-1">Style</label>
+                                                        <select
+                                                            value={styleForm.socialButton?.style || styleForm.button.style}
+                                                            onChange={(e) => setStyleForm({ ...styleForm, socialButton: { ...styleForm.socialButton, style: e.target.value as ButtonStyle } })}
+                                                            className="w-full h-[26px] px-2 text-[10px] font-bold uppercase border border-gray-300 rounded bg-white"
+                                                        >
+                                                            <option value="fill">Fill</option>
+                                                            <option value="outline">Outline</option>
+                                                            <option value="soft-shadow">Soft Shadow</option>
+                                                            <option value="hard-shadow">Hard Shadow</option>
+                                                        </select>
                                                     </div>
                                                 </div>
                                             </div>
@@ -887,7 +931,18 @@ export default function BusinessSetupPage() {
 
                                         {/* Contact & Socials Toggle Grid */}
                                         <div>
-                                            <label className="block text-xs font-bold text-muted-foreground uppercase mb-3">Links & Contacts</label>
+                                            <div className="flex items-center justify-between mb-3">
+                                                <label className="block text-xs font-bold text-muted-foreground uppercase">Links & Contacts</label>
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <span className="text-[10px] font-bold uppercase text-gray-500">Show All</span>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={styleForm.profile?.socialEnabled !== false}
+                                                        onChange={() => setStyleForm({ ...styleForm, profile: { ...styleForm.profile, socialEnabled: styleForm.profile?.socialEnabled === false ? true : false } })}
+                                                        className="size-4 accent-black rounded-none border border-black"
+                                                    />
+                                                </label>
+                                            </div>
                                             <div className="grid grid-cols-2 gap-2">
                                                 {[
                                                     { key: 'isPhoneEnabled', icon: Phone, label: 'Phone', val: profileForm.phone, setter: (v: string) => setProfileForm({ ...profileForm, phone: v }) },
@@ -1021,7 +1076,7 @@ export default function BusinessSetupPage() {
                                 )}
                             </div>
 
-                            {/* 4. Buttons Section */}
+                            {/* 4. Services Section */}
                             <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] overflow-hidden transition-all">
                                 <button
                                     onClick={() => setExpandedSection(expandedSection === 'buttons' ? null : 'buttons')}
@@ -1035,39 +1090,79 @@ export default function BusinessSetupPage() {
                                 </button>
                                 {expandedSection === 'buttons' && (
                                     <div className="p-5 border-t-2 border-black space-y-5 animate-in slide-in-from-top-2">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Color</label>
-                                                <input type="color" value={styleForm.button.color} onChange={(e) => setStyleForm({ ...styleForm, button: { ...styleForm.button, color: e.target.value } })} className="w-full h-8 border-2 border-black p-0 cursor-pointer" />
+
+                                        {/* Container Styling */}
+                                        <div className="space-y-4">
+                                            <label className="block text-[10px] font-bold uppercase text-gray-500 border-b pb-1">Container Style</label>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Background</label>
+                                                    <input type="color" value={styleForm.cardBackgroundColor || "#ffffff"} onChange={(e) => setStyleForm({ ...styleForm, cardBackgroundColor: e.target.value })} className="w-full h-8 border-2 border-black p-0 cursor-pointer" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Text Color</label>
+                                                    <input type="color" value={styleForm.cardTextColor || "#000000"} onChange={(e) => setStyleForm({ ...styleForm, cardTextColor: e.target.value })} className="w-full h-8 border-2 border-black p-0 cursor-pointer" />
+                                                </div>
                                             </div>
+
                                             <div>
-                                                <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Text</label>
-                                                <input type="color" value={styleForm.button.textColor} onChange={(e) => setStyleForm({ ...styleForm, button: { ...styleForm.button, textColor: e.target.value } })} className="w-full h-8 border-2 border-black p-0 cursor-pointer" />
+                                                <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Visual Style</label>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {(['fill', 'outline', 'soft-shadow', 'hard-shadow', 'minimal', 'left-border'] as const).map((style) => (
+                                                        <button key={style} onClick={() => setStyleForm({ ...styleForm, cardStyle: style as any })} className={cn("p-2 border-2 text-[10px] font-bold uppercase truncate", styleForm.cardStyle === style ? "border-black bg-gray-100" : "border-gray-200 text-gray-400")}>{style.replace('-', ' ')}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Shape</label>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {(['square', 'rounded', 'pill'] as ButtonShape[]).map((shape) => (
+                                                        <button key={shape} onClick={() => setStyleForm({ ...styleForm, cardShape: shape })} className={cn("p-2 border-2 text-[10px] font-bold uppercase", styleForm.cardShape === shape ? "border-black bg-gray-100" : "border-gray-200 text-gray-400")}>{shape}</button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div>
-                                            <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Style</label>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {(['fill', 'outline', 'soft-shadow', 'hard-shadow'] as ButtonStyle[]).map((style) => (
-                                                    <button key={style} onClick={() => setStyleForm({ ...styleForm, button: { ...styleForm.button, style } })} className={cn("p-2 border-2 text-[10px] font-bold uppercase", styleForm.button.style === style ? "border-black bg-gray-100" : "border-gray-200 text-gray-400")}>{style}</button>
-                                                ))}
-                                            </div>
-                                        </div>
+                                        {/* Action Button Styling */}
+                                        <div className="space-y-4 pt-4 border-t-2 border-gray-100">
+                                            <label className="block text-[10px] font-bold uppercase text-gray-500 border-b pb-1">Action Button</label>
 
-                                        <div>
-                                            <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Shape</label>
-                                            <div className="grid grid-cols-3 gap-2">
-                                                {(['square', 'rounded', 'pill'] as ButtonShape[]).map((shape) => (
-                                                    <button key={shape} onClick={() => setStyleForm({ ...styleForm, button: { ...styleForm.button, shape } })} className={cn("p-2 border-2 text-[10px] font-bold uppercase", styleForm.button.shape === shape ? "border-black bg-gray-100" : "border-gray-200 text-gray-400")}>{shape}</button>
-                                                ))}
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Color</label>
+                                                    <input type="color" value={styleForm.button.color} onChange={(e) => setStyleForm({ ...styleForm, button: { ...styleForm.button, color: e.target.value } })} className="w-full h-8 border-2 border-black p-0 cursor-pointer" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">Text</label>
+                                                    <input type="color" value={styleForm.button.textColor} onChange={(e) => setStyleForm({ ...styleForm, button: { ...styleForm.button, textColor: e.target.value } })} className="w-full h-8 border-2 border-black p-0 cursor-pointer" />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Style</label>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {(['fill', 'outline', 'soft-shadow', 'hard-shadow'] as ButtonStyle[]).map((style) => (
+                                                        <button key={style} onClick={() => setStyleForm({ ...styleForm, button: { ...styleForm.button, style } })} className={cn("p-2 border-2 text-[10px] font-bold uppercase", styleForm.button.style === style ? "border-black bg-gray-100" : "border-gray-200 text-gray-400")}>{style}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">Shape</label>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {(['square', 'rounded', 'pill'] as ButtonShape[]).map((shape) => (
+                                                        <button key={shape} onClick={() => setStyleForm({ ...styleForm, button: { ...styleForm.button, shape } })} className={cn("p-2 border-2 text-[10px] font-bold uppercase", styleForm.button.shape === shape ? "border-black bg-gray-100" : "border-gray-200 text-gray-400")}>{shape}</button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
 
                                         <div className="pt-4 border-t-2 border-gray-100">
                                             <label className="flex items-center gap-2 mb-3 cursor-pointer">
                                                 <input type="checkbox" checked={styleForm.serviceButton?.enabled} onChange={() => setStyleForm({ ...styleForm, serviceButton: { ...styleForm.serviceButton, enabled: !styleForm.serviceButton?.enabled } })} className="size-4 rounded-none border-2 border-black accent-black" />
-                                                <span className="text-xs font-bold uppercase">"Book" Button</span>
+                                                <span className="text-xs font-bold uppercase">"Book" Button Override</span>
                                             </label>
                                             <div className="space-y-3">
                                                 <input
@@ -1162,65 +1257,117 @@ export default function BusinessSetupPage() {
                                             }}
                                         >
                                             <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
-                                                <div className="p-8 max-w-lg mx-auto min-h-full flex flex-col items-center text-center">
-                                                    {/* Profile Header */}
-                                                    <div className="relative mb-6">
-                                                        <div
-                                                            className={cn(
-                                                                "overflow-hidden bg-white relative z-10 mx-auto transition-all",
-                                                                // Size
-                                                                styleForm.profile?.imageSize === 'small' ? "size-28" :
-                                                                    styleForm.profile?.imageSize === 'large' ? "size-56" : "size-40",
-                                                                // Shape
-                                                                styleForm.profile?.imageShape === 'square' ? "rounded-none" :
-                                                                    styleForm.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
-                                                                // Border
-                                                                styleForm.profile?.imageBorderWidth === 'none' ? "border-0" :
-                                                                    styleForm.profile?.imageBorderWidth === 'thin' ? "border-2" :
-                                                                        styleForm.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
-                                                            )}
-                                                            style={{ borderColor: styleForm.profile?.imageBorderColor || styleForm.font.color }}
-                                                        >
-                                                            {currentUserProfileImageUrl ? (
-                                                                <img src={currentUserProfileImageUrl} alt="Profile" className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                                                                    <UserIcon className="size-10 text-gray-400" />
-                                                                </div>
-                                                            )}
+                                                <div className="p-8 max-w-lg mx-auto min-h-full flex flex-col items-center text-center gap-6">
+                                                    {/* Profile Image - Top Position */}
+                                                    {styleForm.profile?.imagePosition !== 'bottom' && (
+                                                        <div className={cn("relative", styleForm.profile?.imageWidth === 'full' ? "w-full" : "")}>
+                                                            <div
+                                                                className={cn(
+                                                                    "overflow-hidden bg-white relative z-10 transition-all",
+                                                                    // Width
+                                                                    styleForm.profile?.imageWidth === 'full' ? "w-full" : "mx-auto",
+                                                                    // Size (for non-full width)
+                                                                    styleForm.profile?.imageWidth !== 'full' && (
+                                                                        styleForm.profile?.imageSize === 'small' ? "size-28" :
+                                                                            styleForm.profile?.imageSize === 'large' ? "size-56" : "size-40"
+                                                                    ),
+                                                                    // Height for full width
+                                                                    styleForm.profile?.imageWidth === 'full' && (
+                                                                        styleForm.profile?.imageSize === 'small' ? "h-32" :
+                                                                            styleForm.profile?.imageSize === 'large' ? "h-64" : "h-48"
+                                                                    ),
+                                                                    // Shape
+                                                                    styleForm.profile?.imageShape === 'square' ? "rounded-none" :
+                                                                        styleForm.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
+                                                                    // Border
+                                                                    styleForm.profile?.imageBorderWidth === 'none' ? "border-0" :
+                                                                        styleForm.profile?.imageBorderWidth === 'thin' ? "border-2" :
+                                                                            styleForm.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
+                                                                )}
+                                                                style={{ borderColor: styleForm.profile?.imageBorderColor || styleForm.font.color }}
+                                                            >
+                                                                {currentUserProfileImageUrl ? (
+                                                                    <img src={currentUserProfileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                                                                        <UserIcon className="size-10 text-gray-400" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
+                                                    )}
+
+                                                    <div className="space-y-2 w-full">
+                                                        {styleForm.profile?.titleEnabled !== false && (
+                                                            <h1
+                                                                className={cn(
+                                                                    "font-black transition-all",
+                                                                    styleForm.profile?.titleSize === 'small' ? "text-xl" :
+                                                                        styleForm.profile?.titleSize === 'medium' ? "text-3xl" :
+                                                                            styleForm.profile?.titleSize === 'large' ? "text-5xl" :
+                                                                                styleForm.profile?.titleSize === 'xl' ? "text-7xl" : "text-3xl"
+                                                                )}
+                                                                style={{ color: styleForm.profile.titleColor }}
+                                                            >
+                                                                {profileForm.username || "Your Name"}
+                                                            </h1>
+                                                        )}
+                                                        {styleForm.profile?.subtitleEnabled !== false && (
+                                                            <p
+                                                                className={cn(
+                                                                    "font-medium max-w-sm mx-auto transition-all",
+                                                                    styleForm.profile?.bioSize === 'small' ? "text-xs" :
+                                                                        styleForm.profile?.bioSize === 'large' ? "text-lg" : "text-sm"
+                                                                )}
+                                                                style={{ color: styleForm.profile.bioColor }}
+                                                            >
+                                                                {profileForm.bio || user?.bio || "Your bio will appear here..."}
+                                                            </p>
+                                                        )}
                                                     </div>
 
-                                                    {styleForm.profile?.titleEnabled !== false && (
-                                                        <h1
-                                                            className={cn(
-                                                                "font-black mb-2 transition-all",
-                                                                styleForm.profile?.titleSize === 'small' ? "text-xl" :
-                                                                    styleForm.profile?.titleSize === 'medium' ? "text-3xl" :
-                                                                        styleForm.profile?.titleSize === 'large' ? "text-5xl" :
-                                                                            styleForm.profile?.titleSize === 'xl' ? "text-7xl" : "text-3xl"
-                                                            )}
-                                                            style={{ color: styleForm.profile.titleColor }}
-                                                        >
-                                                            {profileForm.username || "Your Name"}
-                                                        </h1>
-                                                    )}
-                                                    {styleForm.profile?.subtitleEnabled !== false && (
-                                                        <p
-                                                            className={cn(
-                                                                "font-medium mb-6 max-w-sm mx-auto transition-all",
-                                                                styleForm.profile?.bioSize === 'small' ? "text-xs" :
-                                                                    styleForm.profile?.bioSize === 'large' ? "text-lg" : "text-sm"
-                                                            )}
-                                                            style={{ color: styleForm.profile.bioColor }}
-                                                        >
-                                                            {profileForm.bio || user?.bio || "Your bio will appear here..."}
-                                                        </p>
+                                                    {/* Profile Image - Bottom Position (Below Bio) */}
+                                                    {styleForm.profile?.imagePosition === 'bottom' && (
+                                                        <div className={cn("relative", styleForm.profile?.imageWidth === 'full' ? "w-full" : "")}>
+                                                            <div
+                                                                className={cn(
+                                                                    "overflow-hidden bg-white relative z-10 transition-all",
+                                                                    // Width
+                                                                    styleForm.profile?.imageWidth === 'full' ? "w-full" : "mx-auto",
+                                                                    // Size (for non-full width)
+                                                                    styleForm.profile?.imageWidth !== 'full' && (
+                                                                        styleForm.profile?.imageSize === 'small' ? "size-28" :
+                                                                            styleForm.profile?.imageSize === 'large' ? "size-56" : "size-40"
+                                                                    ),
+                                                                    // Height for full width
+                                                                    styleForm.profile?.imageWidth === 'full' && (
+                                                                        styleForm.profile?.imageSize === 'small' ? "h-32" :
+                                                                            styleForm.profile?.imageSize === 'large' ? "h-64" : "h-48"
+                                                                    ),
+                                                                    // Shape
+                                                                    styleForm.profile?.imageShape === 'square' ? "rounded-none" :
+                                                                        styleForm.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
+                                                                    // Border
+                                                                    styleForm.profile?.imageBorderWidth === 'none' ? "border-0" :
+                                                                        styleForm.profile?.imageBorderWidth === 'thin' ? "border-2" :
+                                                                            styleForm.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
+                                                                )}
+                                                                style={{ borderColor: styleForm.profile?.imageBorderColor || styleForm.font.color }}
+                                                            >
+                                                                {currentUserProfileImageUrl ? (
+                                                                    <img src={currentUserProfileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                                                                        <UserIcon className="size-10 text-gray-400" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     )}
 
                                                     {/* Social Icons (Top) */}
                                                     {styleForm.profile?.socialEnabled !== false && styleForm.profile?.socialPosition !== 'bottom' && (
-                                                        <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
+                                                        <div className="flex flex-wrap items-center justify-center gap-3">
                                                             {profileForm.instagramUrl && profileForm.isInstagramEnabled && (
                                                                 <div className="p-2 bg-white/90 backdrop-blur rounded-full transition-all"
                                                                     style={getButtonStyles(styleForm.button)}>
@@ -1276,7 +1423,7 @@ export default function BusinessSetupPage() {
                                                                     }}
                                                                 >
                                                                     <div className="flex justify-between items-center gap-4">
-                                                                        <div style={{ color: styleForm.font.color }}>
+                                                                        <div style={{ color: styleForm.cardTextColor || styleForm.font.color }}>
                                                                             <div className="font-bold text-sm">{name}</div>
                                                                             <div className="text-xs opacity-70 mt-1">{description}</div>
                                                                         </div>
@@ -1302,7 +1449,7 @@ export default function BusinessSetupPage() {
 
                                                     {/* Social Links (Bottom) */}
                                                     {styleForm.profile?.socialEnabled !== false && styleForm.profile?.socialPosition === 'bottom' && (
-                                                        <div className="flex flex-wrap items-center justify-center gap-3 mt-8">
+                                                        <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
                                                             {profileForm.instagramUrl && profileForm.isInstagramEnabled && (
                                                                 <div className="p-2 bg-white/90 backdrop-blur rounded-full transition-all"
                                                                     style={getButtonStyles({ ...styleForm.button, ...(styleForm.socialButton || {}) })}>
@@ -1356,7 +1503,7 @@ export default function BusinessSetupPage() {
                                         <div className="size-3 rounded-full bg-yellow-400 border border-black/20"></div>
                                         <div className="size-3 rounded-full bg-green-400 border border-black/20"></div>
                                         <div className="flex-1 bg-white rounded-full px-4 py-1 text-[10px] font-mono text-gray-400 border border-gray-200 ml-2 truncate">
-                                            {bookingUrl || 'schedulemax.com/book/your-name'}
+                                            {bookingUrl || 'morphscheduling.com/book/your-name'}
                                         </div>
                                     </div>
                                     <div className="bg-white rounded-lg overflow-hidden border border-gray-200 h-[800px] relative">
@@ -1370,62 +1517,118 @@ export default function BusinessSetupPage() {
                                             }}
                                         >
                                             <div className="absolute inset-0 overflow-y-auto">
-                                                <div className="p-12 max-w-2xl mx-auto min-h-full flex flex-col items-center text-center">
+                                                <div className="p-12 max-w-2xl mx-auto min-h-full flex flex-col items-center text-center gap-8">
                                                     {/* Profile Header */}
-                                                    <div className="relative mb-8">
-                                                        <div
-                                                            className={cn(
-                                                                "overflow-hidden bg-white relative z-10 mx-auto transition-all",
-                                                                styleForm.profile?.imageSize === 'small' ? "size-32" :
-                                                                    styleForm.profile?.imageSize === 'large' ? "size-64" : "size-48",
-                                                                styleForm.profile?.imageShape === 'square' ? "rounded-none" :
-                                                                    styleForm.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
-                                                                styleForm.profile?.imageBorderWidth === 'none' ? "border-0" :
-                                                                    styleForm.profile?.imageBorderWidth === 'thin' ? "border-2" :
-                                                                        styleForm.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
-                                                            )}
-                                                            style={{ borderColor: styleForm.profile?.imageBorderColor || styleForm.font.color }}
-                                                        >
-                                                            {currentUserProfileImageUrl ? (
-                                                                <img src={currentUserProfileImageUrl} alt="Profile" className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                                                                    <UserIcon className="size-16 text-gray-400" />
-                                                                </div>
-                                                            )}
+                                                    {/* Profile Image - Top Position */}
+                                                    {styleForm.profile?.imagePosition !== 'bottom' && (
+                                                        <div className={cn("relative", styleForm.profile?.imageWidth === 'full' ? "w-full" : "")}>
+                                                            <div
+                                                                className={cn(
+                                                                    "overflow-hidden bg-white relative z-10 transition-all",
+                                                                    // Width
+                                                                    styleForm.profile?.imageWidth === 'full' ? "w-full" : "mx-auto",
+                                                                    // Size (for non-full width)
+                                                                    styleForm.profile?.imageWidth !== 'full' && (
+                                                                        styleForm.profile?.imageSize === 'small' ? "size-32" :
+                                                                            styleForm.profile?.imageSize === 'large' ? "size-64" : "size-48"
+                                                                    ),
+                                                                    // Height for full width
+                                                                    styleForm.profile?.imageWidth === 'full' && (
+                                                                        styleForm.profile?.imageSize === 'small' ? "h-40" :
+                                                                            styleForm.profile?.imageSize === 'large' ? "h-80" : "h-60"
+                                                                    ),
+                                                                    // Shape
+                                                                    styleForm.profile?.imageShape === 'square' ? "rounded-none" :
+                                                                        styleForm.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
+                                                                    // Border
+                                                                    styleForm.profile?.imageBorderWidth === 'none' ? "border-0" :
+                                                                        styleForm.profile?.imageBorderWidth === 'thin' ? "border-2" :
+                                                                            styleForm.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
+                                                                )}
+                                                                style={{ borderColor: styleForm.profile?.imageBorderColor || styleForm.font.color }}
+                                                            >
+                                                                {currentUserProfileImageUrl ? (
+                                                                    <img src={currentUserProfileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                                                                        <UserIcon className="size-16 text-gray-400" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
+                                                    )}
+
+                                                    <div className="space-y-3 w-full">
+                                                        {styleForm.profile?.titleEnabled !== false && (
+                                                            <h1
+                                                                className={cn(
+                                                                    "font-black transition-all",
+                                                                    styleForm.profile?.titleSize === 'small' ? "text-xl" :
+                                                                        styleForm.profile?.titleSize === 'medium' ? "text-3xl" :
+                                                                            styleForm.profile?.titleSize === 'large' ? "text-5xl" :
+                                                                                styleForm.profile?.titleSize === 'xl' ? "text-7xl" : "text-4xl"
+                                                                )}
+                                                                style={{ color: styleForm.profile.titleColor }}
+                                                            >
+                                                                {profileForm.username || "Your Name"}
+                                                            </h1>
+                                                        )}
+                                                        {styleForm.profile?.subtitleEnabled !== false && (
+                                                            <p
+                                                                className={cn(
+                                                                    "font-medium max-w-md mx-auto transition-all",
+                                                                    styleForm.profile?.bioSize === 'small' ? "text-xs" :
+                                                                        styleForm.profile?.bioSize === 'large' ? "text-lg" : "text-base"
+                                                                )}
+                                                                style={{ color: styleForm.profile.bioColor }}
+                                                            >
+                                                                {profileForm.bio || user?.bio || "Your bio will appear here..."}
+                                                            </p>
+                                                        )}
                                                     </div>
 
-                                                    {styleForm.profile?.titleEnabled !== false && (
-                                                        <h1
-                                                            className={cn(
-                                                                "font-black mb-3 transition-all",
-                                                                styleForm.profile?.titleSize === 'small' ? "text-xl" :
-                                                                    styleForm.profile?.titleSize === 'medium' ? "text-3xl" :
-                                                                        styleForm.profile?.titleSize === 'large' ? "text-5xl" :
-                                                                            styleForm.profile?.titleSize === 'xl' ? "text-7xl" : "text-4xl"
-                                                            )}
-                                                            style={{ color: styleForm.profile.titleColor }}
-                                                        >
-                                                            {profileForm.username || "Your Name"}
-                                                        </h1>
-                                                    )}
-                                                    {styleForm.profile?.subtitleEnabled !== false && (
-                                                        <p
-                                                            className={cn(
-                                                                "font-medium mb-8 max-w-md mx-auto transition-all",
-                                                                styleForm.profile?.bioSize === 'small' ? "text-xs" :
-                                                                    styleForm.profile?.bioSize === 'large' ? "text-lg" : "text-base"
-                                                            )}
-                                                            style={{ color: styleForm.profile.bioColor }}
-                                                        >
-                                                            {profileForm.bio || user?.bio || "Your bio will appear here..."}
-                                                        </p>
+                                                    {/* Profile Image - Bottom Position (Below Bio) */}
+                                                    {styleForm.profile?.imagePosition === 'bottom' && (
+                                                        <div className={cn("relative", styleForm.profile?.imageWidth === 'full' ? "w-full" : "")}>
+                                                            <div
+                                                                className={cn(
+                                                                    "overflow-hidden bg-white relative z-10 transition-all",
+                                                                    // Width
+                                                                    styleForm.profile?.imageWidth === 'full' ? "w-full" : "mx-auto",
+                                                                    // Size (for non-full width)
+                                                                    styleForm.profile?.imageWidth !== 'full' && (
+                                                                        styleForm.profile?.imageSize === 'small' ? "size-32" :
+                                                                            styleForm.profile?.imageSize === 'large' ? "size-64" : "size-48"
+                                                                    ),
+                                                                    // Height for full width
+                                                                    styleForm.profile?.imageWidth === 'full' && (
+                                                                        styleForm.profile?.imageSize === 'small' ? "h-40" :
+                                                                            styleForm.profile?.imageSize === 'large' ? "h-80" : "h-60"
+                                                                    ),
+                                                                    // Shape
+                                                                    styleForm.profile?.imageShape === 'square' ? "rounded-none" :
+                                                                        styleForm.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
+                                                                    // Border
+                                                                    styleForm.profile?.imageBorderWidth === 'none' ? "border-0" :
+                                                                        styleForm.profile?.imageBorderWidth === 'thin' ? "border-2" :
+                                                                            styleForm.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
+                                                                )}
+                                                                style={{ borderColor: styleForm.profile?.imageBorderColor || styleForm.font.color }}
+                                                            >
+                                                                {currentUserProfileImageUrl ? (
+                                                                    <img src={currentUserProfileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                                                                        <UserIcon className="size-16 text-gray-400" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     )}
 
                                                     {/* Social Icons (Top - Desktop) */}
                                                     {styleForm.profile?.socialEnabled !== false && styleForm.profile?.socialPosition !== 'bottom' && (
-                                                        <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
+                                                        <div className="flex flex-wrap items-center justify-center gap-3">
                                                             {profileForm.instagramUrl && profileForm.isInstagramEnabled && (
                                                                 <div className="p-2 bg-white/90 backdrop-blur rounded-full transition-all"
                                                                     style={getButtonStyles({ ...styleForm.button, ...(styleForm.socialButton || {}) })}>
@@ -1466,7 +1669,7 @@ export default function BusinessSetupPage() {
                                                     )}
 
                                                     {/* Mock Services - Desktop */}
-                                                    <div className="w-full max-w-lg space-y-4 text-left">
+                                                    <div className={cn("w-full text-left", styleForm.cardStyle === 'minimal' ? "space-y-0 divide-y divide-gray-200" : "space-y-4")}>
                                                         {(services && services.length > 0 ? services : [1, 2, 3]).map((item: any) => {
                                                             const isMock = typeof item === 'number';
                                                             const name = isMock ? `Example Service ${item}` : item.name;
@@ -1479,7 +1682,7 @@ export default function BusinessSetupPage() {
                                                                     style={getContainerStyles(styleForm)}
                                                                 >
                                                                     <div className="flex justify-between items-center gap-6">
-                                                                        <div style={{ color: styleForm.font.color }}>
+                                                                        <div style={{ color: styleForm.cardTextColor || styleForm.font.color }}>
                                                                             <div className="font-bold text-base">{name}</div>
                                                                             <div className="text-sm opacity-70 mt-1">{description}</div>
                                                                         </div>

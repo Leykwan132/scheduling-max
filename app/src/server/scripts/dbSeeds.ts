@@ -136,13 +136,13 @@ export async function seedBookingData(prismaClient: PrismaClient) {
 
   // Find or create a demo user
   let demoUser = await prismaClient.user.findFirst({
-    where: { email: "demo@schedulemax.com" },
+    where: { email: "demo@morphscheduling.com" },
   });
 
   if (!demoUser) {
     demoUser = await prismaClient.user.create({
       data: {
-        email: "demo@schedulemax.com",
+        email: "demo@morphscheduling.com",
         username: "demouser",
         isAdmin: false,
         credits: 10,
@@ -164,7 +164,7 @@ export async function seedBookingData(prismaClient: PrismaClient) {
     business = await prismaClient.business.create({
       data: {
         users: { connect: { id: demoUser.id } },
-        name: "ScheduleMax Demo Salon",
+        name: "MorphScheduling Demo Salon",
         slug: "demo-salon",
         phone: "+1 (555) 123-4567",
       },

@@ -192,7 +192,7 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                         </div>
                         {!isCollapsed && (
                             <span className="font-black text-sm tracking-tight uppercase truncate animate-in fade-in duration-300">
-                                ScheduleMax
+                                MorphScheduling
                             </span>
                         )}
                     </WaspRouterLink>

@@ -473,7 +473,7 @@ export const updateUserProfileImage: any = async (args: UpdateUserProfileImageAr
     // If there's an existing profile image, delete it from S3 and database
     if (currentUser?.profileImageFile) {
         if (currentUser.profileImageFile.s3Key) {
-            await deleteFileFromS3(currentUser.profileImageFile.s3Key);
+            await deleteFileFromS3({ s3Key: currentUser.profileImageFile.s3Key });
         }
         await context.entities.File.delete({
             where: { id: currentUser.profileImageFile.id },

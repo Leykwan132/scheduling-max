@@ -39,7 +39,7 @@ export const paymentPlanCards: Record<PaymentPlanId, PaymentPlanCard> = {
     name: prettyPaymentPlanName(PaymentPlanId.Basic),
     price: "$9",
     description: "For individuals just getting started.",
-    features: ["50 Appointments/mo", "1 Calendar sync", "Stripe integration", "Coupons & discount codes", "Custom landing page", "ScheduleMax branding"],
+    features: ["50 Appointments/mo", "1 Calendar sync", "Stripe integration", "Coupons & discount codes", "Custom landing page", "MorphScheduling branding"],
   },
   [PaymentPlanId.Pro]: {
     name: prettyPaymentPlanName(PaymentPlanId.Pro),
@@ -285,7 +285,7 @@ const PricingPage = () => {
               reach out to us for a custom package.
             </p>
             <div className="mt-8">
-              <a href="mailto:support@schedulemax.com" className="bg-primary text-black border-2 border-black px-8 py-4 font-black uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all">
+              <a href="mailto:support@morphscheduling.com" className="bg-primary text-black border-2 border-black px-8 py-4 font-black uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all">
                 Contact Sales →
               </a>
             </div>

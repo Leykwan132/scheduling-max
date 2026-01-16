@@ -67,7 +67,7 @@ export default function NavBar({
                   <NavLogo />
                 </div>
                 <span className="ml-3 text-xl lg:text-2xl font-black tracking-tighter text-foreground uppercase italic px-1">
-                  ScheduleMax
+                  MorphScheduling
                 </span>
               </WaspRouterLink>
 
@@ -145,7 +145,7 @@ function NavBarMobileMenu({
             <SheetHeader>
               <SheetTitle className="flex items-center">
                 <WaspRouterLink to={routes.LandingPageRoute.to} onClick={() => setMobileMenuOpen(false)}>
-                  <span className="text-2xl font-black italic tracking-tighter text-black uppercase">ScheduleMax</span>
+                  <span className="text-2xl font-black italic tracking-tighter text-black uppercase">MorphScheduling</span>
                 </WaspRouterLink>
               </SheetTitle>
             </SheetHeader>
@@ -219,6 +219,6 @@ const NavLogo = () => (
   <img
     className="size-6 transition-all"
     src={logo}
-    alt="ScheduleMax App"
+    alt="MorphScheduling App"
   />
 );

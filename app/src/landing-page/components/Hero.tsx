@@ -11,17 +11,15 @@ export default function Hero() {
                 <div className="text-left space-y-6">
                     {/* Main Headline - Bold & Heavy */}
                     <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-foreground leading-[0.9]">
-                        BETTER THAN ACUITY.
+                        BOOKING & SCHEDULING.
                         <br />
                         <span className="text-primary-foreground bg-primary inline-block px-2 transform -rotate-1 mt-2">
-                            LOWER COST.
-                        </span>
+                            FOR LIFE                       </span>
                     </h1>
 
                     {/* Subheadline - Clean & Readable */}
                     <p className="text-xl text-muted-foreground max-w-lg leading-relaxed font-medium border-l-4 border-primary pl-4">
-                        The scheduling platform designed for modern creators.
-                        Automated gap-filling, lifetime pricing, and custom branding.
+                        Everything you need to start online booking & appointment with lifetime pricing.
                     </p>
 
                     {/* CTA Buttons - Gumroad Style */}
@@ -60,7 +58,7 @@ export default function Hero() {
                         {/* Content Placeholder / Screenshot Area */}
                         <div className="p-8 flex items-center justify-center h-full bg-neutral-50">
                             <div className="text-center">
-                                <div className="text-4xl font-black text-black mb-2">SCHEDULE MAX</div>
+                                <div className="text-4xl font-black text-black mb-2">MORPH SCHEDULING</div>
                                 <div className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Dashboard Preview</div>
                             </div>
                         </div>

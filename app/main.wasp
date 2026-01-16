@@ -3,7 +3,7 @@ app OpenSaaS {
     version: "^0.20.0"
   },
 
-  title: "Scheduling Max: Better than Acuity",
+  title: "MorphScheduling: Booking & Scheduling for life",
 
   head: [
     "<link rel='icon' href='/favicon.ico' />",

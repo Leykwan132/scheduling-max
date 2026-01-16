@@ -143,56 +143,67 @@ export default function BookingPage() {
             <link rel="stylesheet" href={FONT_CSS[styleConfig.font.family].import} />
 
             {/* Distinct Header Section */}
-            <div className="py-16 mb-12">
+            <div className="pt-16 pb-0 mb-8">
                 <div className="max-w-2xl mx-auto px-4">
-                    <div className="flex flex-col items-center text-center gap-6">
-                        <div className="flex-shrink-0 relative">
-                            {displayImage ? (
-                                <div
-                                    className={cn(
-                                        "overflow-hidden bg-white mx-auto mb-4",
-                                        // Size
-                                        styleConfig.profile?.imageSize === 'small' ? "size-28" :
-                                            styleConfig.profile?.imageSize === 'large' ? "size-56" : "size-40",
-                                        // Shape
-                                        styleConfig.profile?.imageShape === 'square' ? "rounded-none" :
-                                            styleConfig.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
-                                        // Border
-                                        styleConfig.profile?.imageBorderWidth === 'none' ? "border-0" :
-                                            styleConfig.profile?.imageBorderWidth === 'thin' ? "border-2" :
-                                                styleConfig.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
-                                    )}
-                                    style={{ borderColor: styleConfig.profile?.imageBorderColor || styleConfig.font.color }}
-                                >
-                                    <img src={displayImage} alt={displayName} className="w-full h-full object-cover" />
-                                </div>
-                            ) : (
-                                <div
-                                    className={cn(
-                                        "flex items-center justify-center text-4xl font-black mx-auto mb-4",
-                                        // Size
-                                        styleConfig.profile?.imageSize === 'small' ? "size-28" :
-                                            styleConfig.profile?.imageSize === 'large' ? "size-56" : "size-40",
-                                        // Shape
-                                        styleConfig.profile?.imageShape === 'square' ? "rounded-none" :
-                                            styleConfig.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
-                                        // Border
-                                        styleConfig.profile?.imageBorderWidth === 'none' ? "border-0" :
-                                            styleConfig.profile?.imageBorderWidth === 'thin' ? "border-2" :
-                                                styleConfig.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
-                                    )}
-                                    style={{ backgroundColor: styleConfig.button.color, borderColor: styleConfig.profile?.imageBorderColor || styleConfig.font.color, color: styleConfig.button.textColor }}
-                                >
-                                    {displayName[0]}
-                                </div>
-                            )}
-                        </div>
+                    <div className="flex flex-col items-center text-center gap-8">
+                        {styleConfig.profile?.imagePosition !== 'bottom' && (
+                            <div className={cn("flex-shrink-0 relative", styleConfig.profile?.imageWidth === 'full' ? "w-full" : "")}>
+                                {displayImage ? (
+                                    <div
+                                        className={cn(
+                                            "overflow-hidden bg-white relative z-10 transition-all",
+                                            // Width
+                                            styleConfig.profile?.imageWidth === 'full' ? "w-full" : "mx-auto",
+                                            // Size (for non-full width)
+                                            styleConfig.profile?.imageWidth !== 'full' && (
+                                                styleConfig.profile?.imageSize === 'small' ? "size-28" :
+                                                    styleConfig.profile?.imageSize === 'large' ? "size-56" : "size-40"
+                                            ),
+                                            // Height for full width
+                                            styleConfig.profile?.imageWidth === 'full' && (
+                                                styleConfig.profile?.imageSize === 'small' ? "h-40" :
+                                                    styleConfig.profile?.imageSize === 'large' ? "h-80" : "h-60"
+                                            ),
+                                            // Shape
+                                            styleConfig.profile?.imageShape === 'square' ? "rounded-none" :
+                                                styleConfig.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
+                                            // Border
+                                            styleConfig.profile?.imageBorderWidth === 'none' ? "border-0" :
+                                                styleConfig.profile?.imageBorderWidth === 'thin' ? "border-2" :
+                                                    styleConfig.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
+                                        )}
+                                        style={{ borderColor: styleConfig.profile?.imageBorderColor || styleConfig.font.color }}
+                                    >
+                                        <img src={displayImage} alt={displayName} className="w-full h-full object-cover" />
+                                    </div>
+                                ) : (
+                                    <div
+                                        className={cn(
+                                            "flex items-center justify-center text-4xl font-black mx-auto transition-all",
+                                            // Size
+                                            styleConfig.profile?.imageSize === 'small' ? "size-28" :
+                                                styleConfig.profile?.imageSize === 'large' ? "size-56" : "size-40",
+                                            // Shape
+                                            styleConfig.profile?.imageShape === 'square' ? "rounded-none" :
+                                                styleConfig.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
+                                            // Border
+                                            styleConfig.profile?.imageBorderWidth === 'none' ? "border-0" :
+                                                styleConfig.profile?.imageBorderWidth === 'thin' ? "border-2" :
+                                                    styleConfig.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
+                                        )}
+                                        style={{ backgroundColor: styleConfig.button.color, borderColor: styleConfig.profile?.imageBorderColor || styleConfig.font.color, color: styleConfig.button.textColor }}
+                                    >
+                                        {displayName[0]}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
-                        <div className="flex-1 min-w-0">
+                        <div className="space-y-3 w-full">
                             {styleConfig.profile?.titleEnabled !== false && (
                                 <h1
                                     className={cn(
-                                        "font-black tracking-tighter mb-3",
+                                        "font-black tracking-tighter transition-all",
                                         styleConfig.profile?.titleSize === 'small' ? "text-xl" :
                                             styleConfig.profile?.titleSize === 'medium' ? "text-3xl" :
                                                 styleConfig.profile?.titleSize === 'large' ? "text-5xl" :
@@ -206,7 +217,7 @@ export default function BookingPage() {
                             {styleConfig.profile?.subtitleEnabled !== false && user.bio && (
                                 <p
                                     className={cn(
-                                        "font-medium mb-6 max-w-lg mx-auto leading-relaxed",
+                                        "font-medium max-w-lg mx-auto leading-relaxed transition-all",
                                         styleConfig.profile?.bioSize === 'small' ? "text-xs" :
                                             styleConfig.profile?.bioSize === 'large' ? "text-lg" : "text-sm"
                                     )}
@@ -215,55 +226,109 @@ export default function BookingPage() {
                                     {user.bio}
                                 </p>
                             )}
-
-                            {/* Social Links (Top) */}
-                            {styleConfig.profile?.socialEnabled !== false && styleConfig.profile?.socialPosition !== 'bottom' && (
-                                <div className="flex flex-wrap items-center justify-center gap-3">
-                                    {business?.instagramUrl && business.isInstagramEnabled && (
-                                        <a href={business.instagramUrl.startsWith('http') ? business.instagramUrl : `https://${business.instagramUrl}`} target="_blank" rel="noopener noreferrer"
-                                            className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
-                                            style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
-                                            <Instagram className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
-                                        </a>
-                                    )}
-                                    {business?.tiktokUrl && business.isTikTokEnabled && (
-                                        <a href={business.tiktokUrl.startsWith('http') ? business.tiktokUrl : `https://${business.tiktokUrl}`} target="_blank" rel="noopener noreferrer"
-                                            className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
-                                            style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
-                                            <div className="size-5 flex items-center justify-center font-black text-[10px]" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }}>TT</div>
-                                        </a>
-                                    )}
-                                    {business?.facebookUrl && business.isFacebookEnabled && (
-                                        <a href={business.facebookUrl.startsWith('http') ? business.facebookUrl : `https://${business.facebookUrl}`} target="_blank" rel="noopener noreferrer"
-                                            className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
-                                            style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
-                                            <Facebook className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
-                                        </a>
-                                    )}
-                                    {business?.websiteUrl && business.isWebsiteEnabled && (
-                                        <a href={business.websiteUrl.startsWith('http') ? business.websiteUrl : `https://${business.websiteUrl}`} target="_blank" rel="noopener noreferrer"
-                                            className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
-                                            style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
-                                            <Globe className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
-                                        </a>
-                                    )}
-                                    {business?.phone && business.isPhoneEnabled && (
-                                        <a href={`tel:${business.phone.replace(/\D/g, "")}`}
-                                            className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
-                                            style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
-                                            <Phone className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
-                                        </a>
-                                    )}
-                                    {business?.contactEmail && business.isContactEmailEnabled && (
-                                        <a href={`mailto:${business.contactEmail}`}
-                                            className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
-                                            style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
-                                            <Mail className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
-                                        </a>
-                                    )}
-                                </div>
-                            )}
                         </div>
+
+                        {/* Profile Image - Bottom Position (Below Bio) */}
+                        {styleConfig.profile?.imagePosition === 'bottom' && (
+                            <div className={cn("relative", styleConfig.profile?.imageWidth === 'full' ? "w-full" : "")}>
+                                {displayImage ? (
+                                    <div
+                                        className={cn(
+                                            "overflow-hidden bg-white relative z-10 transition-all",
+                                            // Width
+                                            styleConfig.profile?.imageWidth === 'full' ? "w-full" : "mx-auto",
+                                            // Size (for non-full width)
+                                            styleConfig.profile?.imageWidth !== 'full' && (
+                                                styleConfig.profile?.imageSize === 'small' ? "size-28" :
+                                                    styleConfig.profile?.imageSize === 'large' ? "size-56" : "size-40"
+                                            ),
+                                            // Height for full width
+                                            styleConfig.profile?.imageWidth === 'full' && (
+                                                styleConfig.profile?.imageSize === 'small' ? "h-40" :
+                                                    styleConfig.profile?.imageSize === 'large' ? "h-80" : "h-60"
+                                            ),
+                                            // Shape
+                                            styleConfig.profile?.imageShape === 'square' ? "rounded-none" :
+                                                styleConfig.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
+                                            // Border
+                                            styleConfig.profile?.imageBorderWidth === 'none' ? "border-0" :
+                                                styleConfig.profile?.imageBorderWidth === 'thin' ? "border-2" :
+                                                    styleConfig.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
+                                        )}
+                                        style={{ borderColor: styleConfig.profile?.imageBorderColor || styleConfig.font.color }}
+                                    >
+                                        <img src={displayImage} alt={displayName} className="w-full h-full object-cover" />
+                                    </div>
+                                ) : (
+                                    <div
+                                        className={cn(
+                                            "flex items-center justify-center text-4xl font-black mx-auto transition-all",
+                                            // Size
+                                            styleConfig.profile?.imageSize === 'small' ? "size-28" :
+                                                styleConfig.profile?.imageSize === 'large' ? "size-56" : "size-40",
+                                            // Shape
+                                            styleConfig.profile?.imageShape === 'square' ? "rounded-none" :
+                                                styleConfig.profile?.imageShape === 'rounded' ? "rounded-3xl" : "rounded-full",
+                                            // Border
+                                            styleConfig.profile?.imageBorderWidth === 'none' ? "border-0" :
+                                                styleConfig.profile?.imageBorderWidth === 'thin' ? "border-2" :
+                                                    styleConfig.profile?.imageBorderWidth === 'thick' ? "border-8" : "border-4"
+                                        )}
+                                        style={{ backgroundColor: styleConfig.button.color, borderColor: styleConfig.profile?.imageBorderColor || styleConfig.font.color, color: styleConfig.button.textColor }}
+                                    >
+                                        {displayName[0]}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Social Links (Top) */}
+                        {styleConfig.profile?.socialEnabled !== false && styleConfig.profile?.socialPosition !== 'bottom' && (
+                            <div className="flex flex-wrap items-center justify-center gap-3">
+                                {business?.instagramUrl && business.isInstagramEnabled && (
+                                    <a href={business.instagramUrl.startsWith('http') ? business.instagramUrl : `https://${business.instagramUrl}`} target="_blank" rel="noopener noreferrer"
+                                        className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
+                                        style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
+                                        <Instagram className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
+                                    </a>
+                                )}
+                                {business?.tiktokUrl && business.isTikTokEnabled && (
+                                    <a href={business.tiktokUrl.startsWith('http') ? business.tiktokUrl : `https://${business.tiktokUrl}`} target="_blank" rel="noopener noreferrer"
+                                        className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
+                                        style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
+                                        <div className="size-5 flex items-center justify-center font-black text-[10px]" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }}>TT</div>
+                                    </a>
+                                )}
+                                {business?.facebookUrl && business.isFacebookEnabled && (
+                                    <a href={business.facebookUrl.startsWith('http') ? business.facebookUrl : `https://${business.facebookUrl}`} target="_blank" rel="noopener noreferrer"
+                                        className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
+                                        style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
+                                        <Facebook className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
+                                    </a>
+                                )}
+                                {business?.websiteUrl && business.isWebsiteEnabled && (
+                                    <a href={business.websiteUrl.startsWith('http') ? business.websiteUrl : `https://${business.websiteUrl}`} target="_blank" rel="noopener noreferrer"
+                                        className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
+                                        style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
+                                        <Globe className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
+                                    </a>
+                                )}
+                                {business?.phone && business.isPhoneEnabled && (
+                                    <a href={`tel:${business.phone.replace(/\D/g, "")}`}
+                                        className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
+                                        style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
+                                        <Phone className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
+                                    </a>
+                                )}
+                                {business?.contactEmail && business.isContactEmailEnabled && (
+                                    <a href={`mailto:${business.contactEmail}`}
+                                        className="p-3 bg-white/90 backdrop-blur transition-all hover:scale-105"
+                                        style={getButtonStyles({ ...styleConfig.button, ...(styleConfig.socialButton || {}) })}>
+                                        <Mail className="size-5" style={{ color: styleConfig.socialButton?.textColor || styleConfig.button.textColor }} />
+                                    </a>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -273,17 +338,6 @@ export default function BookingPage() {
             <div className="max-w-2xl mx-auto px-4">
                 {/* Services Grid */}
                 <div>
-                    <div className="flex items-center gap-4 mb-10">
-                        <div className="h-px flex-1" style={{ backgroundColor: `${styleConfig.font.color}20` }} />
-                        <h2
-                            className="text-sm font-black uppercase tracking-[0.2em] whitespace-nowrap"
-                            style={{ color: `${styleConfig.font.color}60` }}
-                        >
-                            Available Services
-                        </h2>
-                        <div className="h-px flex-1" style={{ backgroundColor: `${styleConfig.font.color}20` }} />
-                    </div>
-
                     <div className="grid gap-4 grid-cols-1">
                         {services.length > 0 ? (
                             services.map((service: any) => (
@@ -299,11 +353,10 @@ export default function BookingPage() {
                                     <div className="flex justify-between items-center gap-4">
                                         <div style={{ color: styleConfig.font.color }}>
                                             <h3 className="text-lg font-bold mb-1">{service.name}</h3>
-                                            <div className="text-sm opacity-70">
-                                                {service.duration} min • ${service.price.toFixed(2)}
-                                            </div>
-                                            {service.description && (
-                                                <p className="text-sm opacity-60 mt-2 line-clamp-2" style={{ color: styleConfig.profile.bioColor }}>{service.description}</p>
+                                            {styleConfig.serviceButton?.enabled && (
+                                                <div className="text-sm opacity-70">
+                                                    {service.duration} min • ${service.price.toFixed(2)}
+                                                </div>
                                             )}
                                         </div>
 
@@ -419,7 +472,7 @@ export default function BookingPage() {
                                         <div>
                                             <label className="text-xs font-black uppercase tracking-widest text-black mb-4 block underline decoration-primary decoration-4 underline-offset-4">Select Date</label>
                                             <div className="flex flex-col items-center w-full">
-                                                <div className="border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white">
+                                                <div className="p-0 bg-white lg:scale-125 lg:origin-top lg:mb-20 transition-all">
                                                     <DayPicker
                                                         mode="single"
                                                         selected={selectedDate}
@@ -431,13 +484,26 @@ export default function BookingPage() {
                                                         }}
                                                         disabled={{ before: startOfDay(new Date()) }}
                                                         classNames={{
+                                                            selected: `text-white`,
                                                             chevron: "fill-black",
                                                             day: "p-1",
                                                         }}
                                                         modifiersClassNames={{
                                                             disabled: "bg-gray-200 text-gray-400 opacity-50 cursor-not-allowed",
-                                                            selected: "bg-primary text-black border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] font-bold rounded-none hover:bg-primary hover:text-black focus:bg-primary focus:text-black active:bg-primary active:text-black",
-                                                            today: "font-black underline decoration-2 underline-offset-4 decoration-black",
+                                                            today: "font-black underline decoration-2 underline-offset-4",
+                                                        }}
+                                                        modifiersStyles={{
+                                                            selected: {
+                                                                backgroundColor: styleConfig.button.color,
+                                                                color: styleConfig.button.textColor,
+                                                                borderRadius: styleConfig.button.shape === 'pill' ? '50%' : styleConfig.button.shape === 'rounded' ? '8px' : '0px',
+                                                                fontWeight: 'bold',
+                                                                border: 'none',
+                                                                outline: 'none'
+                                                            },
+                                                            today: {
+                                                                textDecorationColor: styleConfig.button.color
+                                                            }
                                                         }}
                                                     />
                                                 </div>
@@ -472,11 +538,20 @@ export default function BookingPage() {
                                                             key={time}
                                                             onClick={() => setSelectedTime(time)}
                                                             className={cn(
-                                                                "py-4 border-4 border-black font-black text-xl tracking-tighter transition-all shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1",
-                                                                selectedTime === time
-                                                                    ? "bg-black text-white"
-                                                                    : "bg-white hover:bg-primary transition-colors text-black"
+                                                                "py-4 font-black text-xl tracking-tighter transition-all flex items-center justify-center",
+                                                                selectedTime === time ? "shadow-md scale-[1.02]" : "hover:opacity-80 border-2"
                                                             )}
+                                                            style={{
+                                                                ...(selectedTime === time
+                                                                    ? getButtonStyles(styleConfig.button)
+                                                                    : {
+                                                                        backgroundColor: 'transparent',
+                                                                        color: styleConfig.font.color,
+                                                                        borderColor: `${styleConfig.font.color}30`, // Light border
+                                                                        borderRadius: styleConfig.button.shape === 'pill' ? '9999px' : styleConfig.button.shape === 'rounded' ? '8px' : '0px',
+                                                                    }
+                                                                )
+                                                            }}
                                                         >
                                                             {formatTimeWithAMPM(time)}
                                                         </button>
@@ -622,13 +697,13 @@ export default function BookingPage() {
             <div className="fixed bottom-8 left-8 hidden md:block">
                 <Link to="/" className="inline-block bg-white border-4 border-black p-3 shadow-[4px_4px_0px_0px_rgba(312,100,78,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all">
                     <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 block -mb-1">Powered by</span>
-                    <span className="text-sm font-black uppercase tracking-tighter italic">ScheduleMax</span>
+                    <span className="text-sm font-black uppercase tracking-tighter italic">MorphScheduling</span>
                 </Link>
             </div>
 
             <div className="md:hidden flex justify-center mt-12">
                 <Link to="/" className="bg-white border-2 border-black px-4 py-2 font-black uppercase tracking-widest text-[10px] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-                    Powered by ScheduleMax
+                    Powered by MorphScheduling
                 </Link>
             </div>
         </div >
