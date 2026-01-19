@@ -3,7 +3,7 @@ import DashboardLayout from "../layout/DashboardLayout";
 import { Palette, Eye, Link2, Check, Package, Plus, Edit, Trash2, ArrowRight, User as UserIcon, ChevronDown, Search, Camera, Loader2, Clock, Copy, Calendar, Globe, Phone, Mail, Instagram, Facebook, X, Type, Square, Circle, Layout, ChevronLeft, ChevronRight, Save } from "lucide-react";
 import { useQuery, useAction } from "wasp/client/operations";
 import { useAuth } from "wasp/client/auth";
-import { getBusinessByUser, getServicesByBusinessAndUserId, upsertBusiness, updateUserProfile, createService, updateService, deleteService, createFileUploadUrl, addFileToDb, getDownloadFileSignedURL, updateUserProfileImage, getSchedule, updateSchedule, updateScheduleOverride } from "wasp/client/operations";
+import { getBusinessByUser, getServicesByBusinessAndUserId, upsertBusiness, updateUserProfile, createService, updateService, deleteService, createFileUploadUrl, addFileToDb, getDownloadFileSignedURL, updateUserProfileImage, getSchedule, updateSchedule, updateScheduleOverride, getCategoriesByBusiness, createCategory, updateCategory, deleteCategory } from "wasp/client/operations";
 import { uploadFileWithProgress, validateFile } from "../../file-upload/fileUploading";
 import { cn } from "../../client/utils";
 import { ToastContainer, Toast } from "../../client/components/Toast";
@@ -125,6 +125,7 @@ export default function BusinessSetupPage() {
     const { data: business, refetch: refetchBusiness } = useQuery(getBusinessByUser);
     const { data: services, refetch: refetchServices } = useQuery(getServicesByBusinessAndUserId, business?.id ? { businessId: business.id, userId: user?.id } : undefined, { enabled: !!business?.id && !!user?.id });
     const { data: schedule, refetch: refetchSchedule } = useQuery(getSchedule);
+    const { data: categories, refetch: refetchCategories } = useQuery(getCategoriesByBusiness);
 
     // Actions
     const updateBusinessAction = useAction(upsertBusiness);
@@ -135,6 +136,9 @@ export default function BusinessSetupPage() {
     const updateUserProfileImageAction = useAction(updateUserProfileImage);
     const updateScheduleAction = useAction(updateSchedule);
     const updateScheduleOverrideAction = useAction(updateScheduleOverride);
+    const createCategoryAction = useAction(createCategory);
+    const updateCategoryAction = useAction(updateCategory);
+    const deleteCategoryAction = useAction(deleteCategory);
 
     // Compute current user's profile image URL from business data
     const currentUserProfileImageUrl = useMemo(() => {
@@ -158,6 +162,8 @@ export default function BusinessSetupPage() {
     const [isAddContactOpen, setIsAddContactOpen] = useState(false);
     const [isTimezoneOpen, setIsTimezoneOpen] = useState(false);
     const [timezoneSearchQuery, setTimezoneSearchQuery] = useState("");
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState("");
 
     // Delete Modal State
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; serviceId: string | null; serviceName: string }>({
@@ -251,7 +257,8 @@ export default function BusinessSetupPage() {
         duration: 30,
         price: 0,
         description: "",
-        isActive: true
+        isActive: true,
+        categoryId: null as string | null
     });
 
     // Availability Schedule State
@@ -571,7 +578,7 @@ export default function BusinessSetupPage() {
             await refetchServices();
             setIsServiceModalOpen(false);
             setEditingService(null);
-            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true });
+            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true, categoryId: null });
         } catch (error: any) {
             addToast("Failed to save service: " + error.message, 'error');
         } finally {
@@ -615,11 +622,12 @@ export default function BusinessSetupPage() {
                 duration: service.duration,
                 price: service.price,
                 description: service.description || "",
-                isActive: service.isActive
+                isActive: service.isActive,
+                categoryId: service.categoryId || null
             });
         } else {
             setEditingService(null);
-            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true });
+            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true, categoryId: null });
         }
         setIsServiceModalOpen(true);
     };
@@ -1122,6 +1130,20 @@ export default function BusinessSetupPage() {
                                                         <button key={shape} onClick={() => setStyleForm({ ...styleForm, cardShape: shape })} className={cn("p-2 border-2 text-[10px] font-bold uppercase", styleForm.cardShape === shape ? "border-black bg-gray-100" : "border-gray-200 text-gray-400")}>{shape}</button>
                                                     ))}
                                                 </div>
+                                            </div>
+
+                                            {/* Display by Category Toggle */}
+                                            <div className="pt-3 border-t border-gray-200">
+                                                <label className="flex items-center gap-3 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={styleForm.displayByCategory || false}
+                                                        onChange={() => setStyleForm({ ...styleForm, displayByCategory: !styleForm.displayByCategory })}
+                                                        className="size-4 rounded-none border-2 border-black accent-black"
+                                                    />
+                                                    <span className="text-xs font-bold uppercase">Display Services by Category</span>
+                                                </label>
+                                                <p className="text-[10px] text-gray-500 mt-1 ml-7">Group services under category headers on your booking page</p>
                                             </div>
                                         </div>
 

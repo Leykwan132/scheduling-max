@@ -31,7 +31,8 @@ export default function App() {
       location.pathname !== routes.LoginRoute.build() &&
       location.pathname !== routes.SignupRoute.build() &&
       !location.pathname.startsWith("/app") &&
-      !location.pathname.startsWith("/book")
+      !location.pathname.startsWith("/book") &&
+      !location.pathname.startsWith("/appointment")
     );
   }, [location]);
 
@@ -59,7 +60,9 @@ export default function App() {
             {shouldDisplayAppNavBar && (
               <NavBar navigationItems={navigationItems} />
             )}
-            {location.pathname.startsWith("/app") ? (
+            {location.pathname.startsWith("/app") ||
+              location.pathname.startsWith("/book") ||
+              location.pathname.startsWith("/appointment") ? (
               <Outlet />
             ) : (
               <div className="mx-auto max-w-screen-2xl">

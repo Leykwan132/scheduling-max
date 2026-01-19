@@ -142,11 +142,12 @@ model Business {
   logoUrl  String?
   phone    String?
 
-  services  Service[]
-  customers Customer[]
-  bookings  Booking[]
-  promos    Promo[]
-  reviews   Review[]
+  services   Service[]
+  customers  Customer[]
+  bookings   Booking[]
+  promos     Promo[]
+  reviews    Review[]
+  categories ServiceCategory[]
 
   // Socials & Contact
   instagramUrl          String?
@@ -214,7 +215,25 @@ model Service {
   price       Float
   isActive    Boolean @default(true)
 
+  categoryId String?
+  category   ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
   bookings Booking[]
+}
+
+model ServiceCategory {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  businessId String
+
+  name String
+
+  services Service[]
+
+  @@unique([businessId, name])
 }
 
 model Customer {

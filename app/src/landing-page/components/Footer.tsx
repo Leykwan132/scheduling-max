@@ -60,7 +60,7 @@ export default function Footer({
             <WaspRouterLink to={routes.LandingPageRoute.to} className="inline-block group">
               <div className="bg-primary p-2 border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_white] -rotate-1 group-hover:rotate-0 transition-transform">
                 <span className="text-2xl font-black italic tracking-tighter text-black uppercase">
-                  MorphScheduling
+                  Morph Scheduling
                 </span>
               </div>
             </WaspRouterLink>
@@ -107,7 +107,7 @@ export default function Footer({
 
         <div className="border-t-2 border-border/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="bg-[#FFEB3B] text-[#0000FF] px-4 py-1 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] -rotate-1 text-xs font-black uppercase tracking-widest">
-            © {new Date().getFullYear()} MorphScheduling Inc.
+            © {new Date().getFullYear()} MorphSwift Studio.
           </div>
           <div className="flex gap-8">
             <a href="#" className="text-xs font-black uppercase tracking-widest text-foreground hover:text-primary underline decoration-2 underline-offset-4">Privacy</a>

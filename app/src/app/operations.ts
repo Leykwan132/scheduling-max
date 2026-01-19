@@ -81,6 +81,9 @@ export const getServicesByBusinessAndUserId: GetServicesByBusinessAndUserId<{ bu
             businessId: args.businessId,
             ...(args.userId && { userId: args.userId })
         },
+        include: {
+            category: true
+        },
         orderBy: { createdAt: "asc" },
     });
 
@@ -497,6 +500,7 @@ type CreateServiceArgs = {
     description?: string | null;
     duration: number;
     price: number;
+    categoryId?: string | null;
 };
 
 export const createService: CreateService<CreateServiceArgs, any> = async (args, context) => {
@@ -525,6 +529,7 @@ export const createService: CreateService<CreateServiceArgs, any> = async (args,
             description: args.description,
             duration: args.duration,
             price: args.price,
+            categoryId: args.categoryId,
         },
     });
 };
@@ -536,6 +541,7 @@ type UpdateServiceArgs = {
     duration?: number;
     price?: number;
     isActive?: boolean;
+    categoryId?: string | null;
 };
 
 export const updateService: UpdateService<UpdateServiceArgs, any> = async (args, context) => {
@@ -587,6 +593,145 @@ export const deleteService: DeleteService<{ id: string }, any> = async (args, co
     });
 };
 
+// Category Operations
+
+export const getCategoriesByBusiness: any = async (_args: {}, context: any) => {
+    if (!context.user) {
+        throw new Error("You must be logged in");
+    }
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) {
+        return [];
+    }
+
+    const categories = await context.entities.ServiceCategory.findMany({
+        where: { businessId: user.businessId },
+        include: {
+            _count: {
+                select: { services: true }
+            }
+        },
+        orderBy: { name: "asc" },
+    });
+
+    return categories;
+};
+
+type CreateCategoryArgs = {
+    name: string;
+};
+
+export const createCategory: any = async (args: CreateCategoryArgs, context: any) => {
+    if (!context.user) {
+        throw new Error("You must be logged in");
+    }
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) {
+        throw new Error("Business not found");
+    }
+
+    // Check if category with same name already exists
+    const existing = await context.entities.ServiceCategory.findFirst({
+        where: {
+            businessId: user.businessId,
+            name: args.name.trim()
+        }
+    });
+
+    if (existing) {
+        throw new Error("A category with this name already exists");
+    }
+
+    return await context.entities.ServiceCategory.create({
+        data: {
+            businessId: user.businessId,
+            name: args.name.trim(),
+        },
+    });
+};
+
+type UpdateCategoryArgs = {
+    id: string;
+    name: string;
+};
+
+export const updateCategory: any = async (args: UpdateCategoryArgs, context: any) => {
+    if (!context.user) {
+        throw new Error("You must be logged in");
+    }
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) {
+        throw new Error("Business not found");
+    }
+
+    // Verify category belongs to user's business
+    const category = await context.entities.ServiceCategory.findUnique({
+        where: { id: args.id },
+    });
+
+    if (!category || category.businessId !== user.businessId) {
+        throw new Error("Category not found or access denied");
+    }
+
+    // Check for name conflict
+    const existing = await context.entities.ServiceCategory.findFirst({
+        where: {
+            businessId: user.businessId,
+            name: args.name.trim(),
+            NOT: { id: args.id }
+        }
+    });
+
+    if (existing) {
+        throw new Error("A category with this name already exists");
+    }
+
+    return await context.entities.ServiceCategory.update({
+        where: { id: args.id },
+        data: { name: args.name.trim() },
+    });
+};
+
+export const deleteCategory: any = async (args: { id: string }, context: any) => {
+    if (!context.user) {
+        throw new Error("You must be logged in");
+    }
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (!user?.businessId) {
+        throw new Error("Business not found");
+    }
+
+    // Verify category belongs to user's business
+    const category = await context.entities.ServiceCategory.findUnique({
+        where: { id: args.id },
+    });
+
+    if (!category || category.businessId !== user.businessId) {
+        throw new Error("Category not found or access denied");
+    }
+
+    // Delete category - services will have categoryId set to null due to onDelete: SetNull
+    return await context.entities.ServiceCategory.delete({
+        where: { id: args.id },
+    });
+};
+
 export const getSchedule: GetSchedule<void, any> = async (_args, context) => {
     if (!context.user) throw new Error("You must be logged in");
 
@@ -616,6 +761,56 @@ export const getSchedule: GetSchedule<void, any> = async (_args, context) => {
         });
     }
     return schedule;
+};
+
+// Onboarding status query - detects completion of setup steps
+export const getOnboardingStatus = async (_args: void, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const user = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+        select: {
+            styleConfig: true,
+            workDays: true,
+            businessId: true
+        }
+    });
+
+    // Check 1: Has services (appointment types)
+    let hasServices = false;
+    if (user?.businessId) {
+        const serviceCount = await context.entities.Service.count({
+            where: {
+                businessId: user.businessId,
+                userId: context.user.id
+            }
+        });
+        hasServices = serviceCount > 0;
+    }
+
+    // Check 2: Has set availability (schedule days exist or workDays is set)
+    const schedule = await context.entities.Schedule.findFirst({
+        where: { userId: context.user.id },
+        include: { days: true }
+    });
+    // User has availability if they have schedule days OR workDays is set
+    const hasAvailability = (schedule && schedule.days.length > 0) || !!user?.workDays;
+
+    // Check 3: Has customized design (styleConfig is saved)
+    const hasCustomizedDesign = !!user?.styleConfig;
+
+    // Calculate completion
+    const completedSteps = [hasServices, hasAvailability, hasCustomizedDesign].filter(Boolean).length;
+    const completionPercentage = Math.round((completedSteps / 3) * 100);
+
+    return {
+        hasServices,
+        hasAvailability,
+        hasCustomizedDesign,
+        completedSteps,
+        totalSteps: 3,
+        completionPercentage
+    };
 };
 
 type UpdateScheduleArgs = {

@@ -3,7 +3,7 @@ app OpenSaaS {
     version: "^0.20.0"
   },
 
-  title: "MorphScheduling: Booking & Scheduling for life",
+  title: "Morph Scheduling: Booking & Scheduling for life",
 
   head: [
     "<link rel='icon' href='/favicon.ico' />",
@@ -288,12 +288,12 @@ action updateUserProfileImage {
 
 action createService {
   fn: import { createService } from "@src/app/operations",
-  entities: [Service, Business, User]
+  entities: [Service, ServiceCategory, Business, User]
 }
 
 action updateService {
   fn: import { updateService } from "@src/app/operations",
-  entities: [Service, User]
+  entities: [Service, ServiceCategory, User]
 }
 
 action deleteService {
@@ -301,9 +301,34 @@ action deleteService {
   entities: [Service, User]
 }
 
+query getCategoriesByBusiness {
+  fn: import { getCategoriesByBusiness } from "@src/app/operations",
+  entities: [ServiceCategory, Business, User]
+}
+
+action createCategory {
+  fn: import { createCategory } from "@src/app/operations",
+  entities: [ServiceCategory, Business, User]
+}
+
+action updateCategory {
+  fn: import { updateCategory } from "@src/app/operations",
+  entities: [ServiceCategory, User]
+}
+
+action deleteCategory {
+  fn: import { deleteCategory } from "@src/app/operations",
+  entities: [ServiceCategory, Service, User]
+}
+
 query getSchedule {
   fn: import { getSchedule } from "@src/app/operations",
   entities: [Schedule, ScheduleDay, ScheduleOverride, User]
+}
+
+query getOnboardingStatus {
+  fn: import { getOnboardingStatus } from "@src/app/operations",
+  entities: [User, Service, Schedule, ScheduleDay]
 }
 
 action updateSchedule {
@@ -428,6 +453,26 @@ query getAvailableSlots {
 action createPublicBooking {
   fn: import { createPublicBooking } from "@src/booking/operations",
   entities: [User, Business, Service, Customer, Booking]
+}
+
+action reschedulePublicBooking {
+  fn: import { reschedulePublicBooking } from "@src/booking/operations",
+  entities: [User, Business, Service, Customer, Booking, Schedule, ScheduleDay, ScheduleOverride]
+}
+
+action cancelPublicBooking {
+  fn: import { cancelPublicBooking } from "@src/booking/operations",
+  entities: [Booking]
+}
+
+route AppointmentRoute { path: "/appointment/:bookingId", to: AppointmentPage }
+page AppointmentPage {
+  component: import AppointmentPage from "@src/booking/AppointmentPage"
+}
+
+query getBookingById {
+  fn: import { getBookingById } from "@src/booking/operations",
+  entities: [Booking, Service, Customer, User, Business]
 }
 //#endregion
 

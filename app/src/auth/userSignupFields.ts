@@ -7,6 +7,15 @@ const emailDataSchema = z.object({
   email: z.string(),
 });
 
+const generateDefaultSlug = (email: string) => {
+  const prefix = email
+    .split("@")[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-");
+  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+  return `${prefix}-${randomSuffix}`;
+};
+
 export const getEmailUserFields = defineUserSignupFields({
   email: (data) => {
     const emailData = emailDataSchema.parse(data);
@@ -15,6 +24,10 @@ export const getEmailUserFields = defineUserSignupFields({
   username: (data) => {
     const emailData = emailDataSchema.parse(data);
     return emailData.email;
+  },
+  slug: (data) => {
+    const emailData = emailDataSchema.parse(data);
+    return generateDefaultSlug(emailData.email);
   },
   isAdmin: (data) => {
     const emailData = emailDataSchema.parse(data);
@@ -47,6 +60,10 @@ export const getGitHubUserFields = defineUserSignupFields({
   username: (data) => {
     const githubData = githubDataSchema.parse(data);
     return githubData.profile.login;
+  },
+  slug: (data) => {
+    const githubData = githubDataSchema.parse(data);
+    return generateDefaultSlug(getGithubEmailInfo(githubData).email);
   },
   isAdmin: (data) => {
     const githubData = githubDataSchema.parse(data);
@@ -88,6 +105,10 @@ export const getGoogleUserFields = defineUserSignupFields({
     const googleData = googleDataSchema.parse(data);
     return googleData.profile.email;
   },
+  slug: (data) => {
+    const googleData = googleDataSchema.parse(data);
+    return generateDefaultSlug(googleData.profile.email);
+  },
   isAdmin: (data) => {
     const googleData = googleDataSchema.parse(data);
     if (!googleData.profile.email_verified) {
@@ -125,6 +146,14 @@ export const getDiscordUserFields = defineUserSignupFields({
   username: (data) => {
     const discordData = discordDataSchema.parse(data);
     return discordData.profile.username;
+  },
+  slug: (data) => {
+    const discordData = discordDataSchema.parse(data);
+    // Verified email is checked in isAdmin, but mostly we need email for slug
+    if (!discordData.profile.email) {
+      throw new Error("Email required for slug generation");
+    }
+    return generateDefaultSlug(discordData.profile.email);
   },
   isAdmin: (data) => {
     const discordData = discordDataSchema.parse(data);

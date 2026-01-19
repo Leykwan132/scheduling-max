@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../layout/DashboardLayout";
-import { Briefcase, Plus, Edit2, Trash2, X } from "lucide-react";
+import { Briefcase, Plus, Edit2, Trash2, X, ChevronDown, Loader2 } from "lucide-react";
 import { useQuery, useAction } from "wasp/client/operations";
 import { useAuth } from "wasp/client/auth";
-import { getBusinessByUser, getServicesByBusinessAndUserId, createService, updateService, deleteService } from "wasp/client/operations";
+import { getBusinessByUser, getServicesByBusinessAndUserId, createService, updateService, deleteService, getCategoriesByBusiness, createCategory } from "wasp/client/operations";
 import { cn } from "../../client/utils";
 import { ToastContainer } from "../../client/components/Toast";
 
@@ -19,6 +19,9 @@ export default function ServicesPage() {
     const createServiceAction = useAction(createService);
     const updateServiceAction = useAction(updateService);
     const deleteServiceAction = useAction(deleteService);
+    const createCategoryAction = useAction(createCategory);
+
+    const { data: categories, refetch: refetchCategories } = useQuery(getCategoriesByBusiness);
 
     const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
     const [editingService, setEditingService] = useState<any>(null);
@@ -27,7 +30,8 @@ export default function ServicesPage() {
         duration: 30,
         price: 0,
         description: "",
-        isActive: true
+        isActive: true,
+        categoryId: null as string | null
     });
     const [isSaving, setIsSaving] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -37,6 +41,11 @@ export default function ServicesPage() {
         serviceId: null,
         serviceName: ""
     });
+
+    // Category creation state
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState("");
+    const [isSavingCategory, setIsSavingCategory] = useState(false);
 
     const addToast = (message: string, type: 'success' | 'error') => {
         const id = Date.now().toString();
@@ -55,12 +64,15 @@ export default function ServicesPage() {
                 duration: service.duration,
                 price: service.price,
                 description: service.description || "",
-                isActive: service.isActive
+                isActive: service.isActive,
+                categoryId: service.categoryId || null
             });
         } else {
             setEditingService(null);
-            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true });
+            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true, categoryId: null });
         }
+        setIsCreatingCategory(false);
+        setNewCategoryName("");
         setIsServiceModalOpen(true);
     };
 
@@ -85,11 +97,28 @@ export default function ServicesPage() {
             await refetchServices();
             setIsServiceModalOpen(false);
             setEditingService(null);
-            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true });
+            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true, categoryId: null });
         } catch (error: any) {
             addToast("Failed to save service: " + error.message, 'error');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleCreateCategory = async () => {
+        if (!newCategoryName.trim()) return;
+        setIsSavingCategory(true);
+        try {
+            const newCategory = await createCategoryAction({ name: newCategoryName.trim() }) as { id: string };
+            await refetchCategories();
+            setServiceForm({ ...serviceForm, categoryId: newCategory.id });
+            setIsCreatingCategory(false);
+            setNewCategoryName("");
+            addToast("Category created!", 'success');
+        } catch (error: any) {
+            addToast("Failed to create category: " + error.message, 'error');
+        } finally {
+            setIsSavingCategory(false);
         }
     };
 
@@ -293,6 +322,59 @@ export default function ServicesPage() {
                                         />
                                     </div>
                                 </div>
+
+                                {/* Category Dropdown */}
+                                <div>
+                                    <label className="block text-sm font-black uppercase mb-2">Category</label>
+                                    {isCreatingCategory ? (
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={newCategoryName}
+                                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                                className="flex-1 px-4 py-3 border-2 border-black font-bold text-sm"
+                                                placeholder="Category name..."
+                                                autoFocus
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleCreateCategory}
+                                                disabled={isSavingCategory || !newCategoryName.trim()}
+                                                className="px-4 py-3 bg-primary border-2 border-black font-black text-xs uppercase disabled:opacity-50"
+                                            >
+                                                {isSavingCategory ? <Loader2 className="size-4 animate-spin" /> : "Save"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setIsCreatingCategory(false); setNewCategoryName(""); }}
+                                                className="px-4 py-3 border-2 border-black font-black text-xs uppercase hover:bg-muted"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <select
+                                                value={serviceForm.categoryId || ""}
+                                                onChange={(e) => setServiceForm({ ...serviceForm, categoryId: e.target.value || null })}
+                                                className="w-full px-4 py-3 border-2 border-black font-bold text-sm appearance-none bg-white cursor-pointer"
+                                            >
+                                                <option value="">No category</option>
+                                                {(Array.isArray(categories) ? categories : []).map((cat: any) => (
+                                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsCreatingCategory(true)}
+                                                className="text-xs font-black uppercase text-primary hover:underline"
+                                            >
+                                                + Create New Category
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
                                 <div className="flex gap-3 pt-4">
                                     <button
                                         type="button"

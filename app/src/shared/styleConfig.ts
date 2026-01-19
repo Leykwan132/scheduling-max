@@ -90,6 +90,7 @@ export interface StyleConfig {
     cardTextColor?: string; // Optional override for card text
     cardStyle?: "default" | "left-border" | "minimal" | "fill" | "outline" | "soft-shadow" | "hard-shadow";
     cardShape?: ButtonShape;
+    displayByCategory?: boolean; // Group services by category on booking page
 }
 
 // Default configurations per template

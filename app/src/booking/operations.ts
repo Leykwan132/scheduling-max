@@ -1,8 +1,8 @@
-import type { GetUserBySlug, GetAvailableSlots, CreatePublicBooking } from "wasp/server/operations";
+import type { GetUserBySlug, GetAvailableSlots, CreatePublicBooking, ReschedulePublicBooking, CancelPublicBooking, GetBookingById } from "wasp/server/operations";
 import { HttpError } from "wasp/server";
 import { getDownloadFileSignedURLFromS3 } from "../file-upload/s3Utils";
 import { availableSlotsForWindow, type TimeRange } from "../utils/availableSlots";
-import { createGoogleCalendarEvent, formatBookingForCalendar } from "../server/integrations/googleCalendar";
+import { createGoogleCalendarEvent, formatBookingForCalendar, updateGoogleCalendarEvent, deleteGoogleCalendarEvent } from "../server/integrations/googleCalendar";
 
 export const getUserBySlug: GetUserBySlug<{ slug: string }, any> = async (args, context) => {
     const user = await context.entities.User.findUnique({
@@ -482,4 +482,273 @@ export const createPublicBooking: CreatePublicBooking<CreatePublicBookingArgs, a
     }
 
     return booking;
+};
+
+// Types for reschedule action
+type ReschedulePublicBookingArgs = {
+    bookingId: string;
+    newDate: string; // YYYY-MM-DD
+    newTime: string; // HH:MM
+    visitorTimezone?: string;
+};
+
+export const reschedulePublicBooking: ReschedulePublicBooking<ReschedulePublicBookingArgs, any> = async (args, context) => {
+    const { bookingId, newDate, newTime } = args;
+
+    console.log("[reschedulePublicBooking] Called with:", { bookingId, newDate, newTime });
+
+    // Get existing booking with all related data
+    const existingBooking = await context.entities.Booking.findUnique({
+        where: { id: bookingId },
+        include: {
+            service: true,
+            staff: {
+                include: {
+                    schedules: {
+                        include: { days: true, overrides: true }
+                    }
+                }
+            },
+            customer: true
+        }
+    });
+
+    if (!existingBooking) {
+        throw new HttpError(404, "Booking not found");
+    }
+
+    if (existingBooking.status === 'cancelled') {
+        throw new HttpError(400, "Cannot reschedule a cancelled booking");
+    }
+
+    const user = existingBooking.staff;
+    const service = existingBooking.service;
+
+    // Parse new date and time
+    const [year, month, day] = newDate.split('-').map(Number);
+    const [startH, startM] = newTime.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = startMinutes + service.duration;
+
+    // Check if booking is in the past
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentTimeMin = now.getHours() * 60 + now.getMinutes();
+
+    if (newDate < todayStr || (newDate === todayStr && startMinutes <= currentTimeMin)) {
+        throw new HttpError(400, "Cannot reschedule to a time slot in the past");
+    }
+
+    // Get day of week
+    const localDate = new Date(year, month - 1, day);
+    const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const dayName = dayNames[localDate.getDay()];
+
+    // Check if slot is within working hours
+    let isWithinSchedule = false;
+    let workingRanges: { start: number; end: number }[] = [];
+
+    if (user.schedules && user.schedules.length > 0) {
+        const schedule = user.schedules[0];
+        const override = schedule.overrides.find((o: any) => o.date === newDate);
+
+        if (override) {
+            if (override.isUnavailable) {
+                throw new HttpError(400, "Selected date is unavailable");
+            }
+            if (override.startTime && override.endTime) {
+                const [sH, sM] = override.startTime.split(':').map(Number);
+                const [eH, eM] = override.endTime.split(':').map(Number);
+                workingRanges.push({ start: sH * 60 + sM, end: eH * 60 + eM });
+            }
+        } else {
+            const daySlots = schedule.days.filter((d: any) => d.dayOfWeek === dayName);
+
+            if (daySlots.length === 0) {
+                throw new HttpError(400, "Selected date is unavailable (day off)");
+            }
+
+            workingRanges = daySlots.map((d: any) => {
+                const [sH, sM] = d.startTime.split(':').map(Number);
+                const [eH, eM] = d.endTime.split(':').map(Number);
+                return { start: sH * 60 + sM, end: eH * 60 + eM };
+            });
+        }
+
+        isWithinSchedule = workingRanges.some(r => startMinutes >= r.start && endMinutes <= r.end);
+    }
+
+    if (!isWithinSchedule) {
+        throw new HttpError(400, "Selected time is outside of working hours");
+    }
+
+    // Check for overlaps with existing bookings (excluding current booking)
+    const searchStartUtc = new Date(Date.UTC(year, month - 1, day - 1, 0, 0, 0));
+    const searchEndUtc = new Date(Date.UTC(year, month - 1, day + 1, 23, 59, 59));
+
+    const allBookings = await context.entities.Booking.findMany({
+        where: {
+            staffId: user.id,
+            id: { not: bookingId }, // Exclude current booking
+            startTimeUtc: {
+                gte: searchStartUtc,
+                lte: searchEndUtc,
+            },
+            status: { notIn: ["cancelled"] }
+        },
+    });
+
+    const existingBookings = allBookings.filter((b: any) => {
+        const bookingDateStr = b.startTimeUtc.toISOString().split('T')[0];
+        return bookingDateStr === newDate;
+    });
+
+    const hasOverlap = existingBookings.some((b: any) => {
+        const bStartMin = b.startTimeUtc.getUTCHours() * 60 + b.startTimeUtc.getUTCMinutes();
+        const bEndMin = b.endTimeUtc.getUTCHours() * 60 + b.endTimeUtc.getUTCMinutes();
+        return startMinutes < bEndMin && endMinutes > bStartMin;
+    });
+
+    if (hasOverlap) {
+        throw new HttpError(409, "Selected time slot is already booked");
+    }
+
+    // Compute new UTC timestamps
+    const newStartTimeUtc = new Date(Date.UTC(year, month - 1, day, startH, startM));
+    const newEndTimeUtc = new Date(newStartTimeUtc.getTime() + service.duration * 60000);
+    const newBookingDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+
+    // Update booking
+    let updatedBooking = await context.entities.Booking.update({
+        where: { id: bookingId },
+        data: {
+            date: newBookingDate,
+            startTimeUtc: newStartTimeUtc,
+            endTimeUtc: newEndTimeUtc,
+        },
+        include: {
+            service: true,
+            customer: true,
+            staff: true
+        }
+    });
+
+    console.log("[reschedulePublicBooking] Updated booking:", updatedBooking.id);
+
+    // Update Google Calendar event if exists
+    if (user.googRefreshToken && existingBooking.googleCalendarEventId) {
+        try {
+            const eventData = formatBookingForCalendar({
+                service,
+                customer: existingBooking.customer,
+                startTimeUtc: newStartTimeUtc,
+                endTimeUtc: newEndTimeUtc,
+                notes: existingBooking.notes,
+                price: service.price,
+            });
+            await updateGoogleCalendarEvent(user.googRefreshToken, existingBooking.googleCalendarEventId, eventData);
+            console.log("[reschedulePublicBooking] Updated Google Calendar event");
+        } catch (error) {
+            console.error('[reschedulePublicBooking] Failed to update Google Calendar:', error);
+        }
+    }
+
+    return updatedBooking;
+};
+
+// Types for cancel action
+type CancelPublicBookingArgs = {
+    bookingId: string;
+};
+
+export const cancelPublicBooking: CancelPublicBooking<CancelPublicBookingArgs, any> = async (args, context) => {
+    const { bookingId } = args;
+
+    console.log("[cancelPublicBooking] Called with:", { bookingId });
+
+    // Get existing booking
+    const existingBooking = await context.entities.Booking.findUnique({
+        where: { id: bookingId },
+        include: {
+            staff: true
+        }
+    });
+
+    if (!existingBooking) {
+        throw new HttpError(404, "Booking not found");
+    }
+
+    if (existingBooking.status === 'cancelled') {
+        throw new HttpError(400, "Booking is already cancelled");
+    }
+
+    // Update booking status
+    const cancelledBooking = await context.entities.Booking.update({
+        where: { id: bookingId },
+        data: {
+            status: 'cancelled'
+        }
+    });
+
+    console.log("[cancelPublicBooking] Cancelled booking:", cancelledBooking.id);
+
+    // Delete Google Calendar event if exists
+    if (existingBooking.staff.googRefreshToken && existingBooking.googleCalendarEventId) {
+        try {
+            await deleteGoogleCalendarEvent(existingBooking.staff.googRefreshToken, existingBooking.googleCalendarEventId);
+            console.log("[cancelPublicBooking] Deleted Google Calendar event");
+        } catch (error) {
+            console.error('[cancelPublicBooking] Failed to delete Google Calendar event:', error);
+        }
+    }
+
+    return cancelledBooking;
+};
+
+// Types for getBookingById query
+type GetBookingByIdArgs = {
+    bookingId: string;
+};
+
+export const getBookingById: GetBookingById<GetBookingByIdArgs, any> = async (args, context) => {
+    const { bookingId } = args;
+
+    const booking = await context.entities.Booking.findUnique({
+        where: { id: bookingId },
+        include: {
+            service: true,
+            customer: true,
+            staff: {
+                include: {
+                    business: true,
+                    profileImageFile: {
+                        select: { s3Key: true }
+                    }
+                }
+            }
+        }
+    });
+
+    if (!booking) {
+        throw new HttpError(404, "Booking not found");
+    }
+
+    // Generate signed URL for staff profile image
+    let staffProfileImageUrl: string | undefined = undefined;
+    if (booking.staff.profileImageFile?.s3Key) {
+        try {
+            staffProfileImageUrl = await getDownloadFileSignedURLFromS3({ s3Key: booking.staff.profileImageFile.s3Key });
+        } catch (error) {
+            console.error("Error generating signed URL for staff profile image:", error);
+        }
+    }
+
+    return {
+        ...booking,
+        staff: {
+            ...booking.staff,
+            profileImageUrl: staffProfileImageUrl,
+            profileImageFile: undefined,
+        }
+    };
 };
