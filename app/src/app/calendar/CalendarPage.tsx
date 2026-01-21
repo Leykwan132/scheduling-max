@@ -4,7 +4,7 @@ import { Plus, ChevronDown, Check, Calendar } from "lucide-react";
 import { format, isSameDay } from "date-fns";
 import { useQuery } from "wasp/client/operations";
 import { useAuth } from "wasp/client/auth";
-import { getCalendarBookings, getServicesByBusinessAndUserId, getBusinessByUser, getCustomersByBusiness, getGoogleCalendarStatus, getGoogleCalendarEvents } from "wasp/client/operations";
+import { getCalendarBookings, getServicesByBusinessAndUserId, getBusinessByUser, getCustomersByBusiness, getGoogleCalendarStatus, getGoogleCalendarEvents, getSchedule } from "wasp/client/operations";
 import { createBooking, updateBooking, deleteBooking } from "wasp/client/operations";
 import CalendarHeader from "./CalendarHeader";
 import MonthView from "./MonthView";
@@ -44,6 +44,9 @@ export default function CalendarPage() {
     const { data: shop } = useQuery(getBusinessByUser);
     const { data: user } = useAuth();
 
+    // Get business timezone (default to UTC if not set)
+    const businessTimezone = user?.timezone || 'UTC';
+
     // Fetch bookings based on filter
     const { data: bookingsData, refetch: refetchBookings } = useQuery(
         getCalendarBookings,
@@ -56,6 +59,7 @@ export default function CalendarPage() {
         { enabled: !!shop?.id && !!user?.id }
     );
     const { data: customers } = useQuery(getCustomersByBusiness);
+    const { data: schedule } = useQuery(getSchedule, {});
     const { data: googleStatus } = useQuery(getGoogleCalendarStatus, {}) as { data: { isConnected: boolean } | undefined };
 
     // Calculate time range for Google Calendar events based on current view
@@ -97,9 +101,17 @@ export default function CalendarPage() {
     const bookingAppointments = (bookingsData || [])
         .filter((booking: any) => booking.status !== 'cancelled')
         .map((booking: any) => {
-            // Derive time from startTimeUtc
+            // Convert UTC time to business timezone for display
             const startUtc = new Date(booking.startTimeUtc);
-            const time = `${startUtc.getUTCHours().toString().padStart(2, '0')}:${startUtc.getUTCMinutes().toString().padStart(2, '0')}`;
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: businessTimezone,
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            const time = formatter.format(startUtc).replace(/^(\d{1,2}):(\d{2})$/, (_, h, m) =>
+                `${h.padStart(2, '0')}:${m}`
+            );
 
             // Derive duration from difference between endTimeUtc and startTimeUtc
             const endUtc = new Date(booking.endTimeUtc);
@@ -279,9 +291,17 @@ export default function CalendarPage() {
             // Find the full booking data from bookingsData
             const fullBooking = bookingsData?.find((b: any) => b.id === selectedAppointment.id);
             if (fullBooking) {
-                // Derive time from startTimeUtc
+                // Convert UTC time to business timezone for display
                 const startUtc = new Date(fullBooking.startTimeUtc);
-                const time = `${startUtc.getUTCHours().toString().padStart(2, '0')}:${startUtc.getUTCMinutes().toString().padStart(2, '0')}`;
+                const formatter = new Intl.DateTimeFormat('en-US', {
+                    timeZone: businessTimezone,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+                const time = formatter.format(startUtc).replace(/^(\d{1,2}):(\d{2})$/, (_, h, m) =>
+                    `${h.padStart(2, '0')}:${m}`
+                );
 
                 setEditingBooking({
                     id: fullBooking.id,
@@ -405,6 +425,7 @@ export default function CalendarPage() {
                                     appointments={appointments}
                                     onAppointmentClick={handleAppointmentClick}
                                     isAppointmentPast={isAppointmentPast}
+                                    schedule={schedule}
                                 />
                             )}
                         </div>

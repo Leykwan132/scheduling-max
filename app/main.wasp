@@ -38,8 +38,8 @@ app OpenSaaS {
       //   (RequestPasswordReset(Route|Page), PasswordReset(Route|Page), EmailVerification(Route|Page))
       email: {
         fromField: {
-          name: "Open SaaS App",
-          email: "me@example.com"
+          name: "Morph Scheduling",
+          email: "no-reply@morphscheduling.com"
         },
         emailVerification: {
           clientRoute: EmailVerificationRoute,
@@ -89,11 +89,11 @@ app OpenSaaS {
     // NOTE: "Dummy" provider is just for local development purposes.
     //   Make sure to check the server logs for the email confirmation url (it will not be sent to an address)!
     //   Once you are ready for production, switch to e.g. "SendGrid" or "Mailgun" providers. Check out https://docs.opensaas.sh/guides/email-sending/ .
-    provider: Dummy,
+    provider: SendGrid,
     defaultFrom: {
-      name: "Open SaaS App",
+      name: "Morph Scheduling",
       // When using a real provider, e.g. SendGrid, you must use the same email address that you configured your account to send out emails with!
-      email: "me@example.com"
+      email: "no-reply@morphscheduling.com"
     },
   },
 }
@@ -209,17 +209,18 @@ page BookingsPage {
   component: import BookingsPage from "@src/app/bookings/BookingsPage"
 }
 
+route FormsRoute { path: "/app/forms", to: FormsPage }
+page FormsPage {
+  authRequired: true,
+  component: import FormsPage from "@src/app/forms/FormsPage"
+}
+
 route PromosRoute { path: "/app/promos", to: PromosPage }
 page PromosPage {
   authRequired: true,
   component: import PromosPage from "@src/app/promos/PromosPage"
 }
 
-route ReviewsRoute { path: "/app/reviews", to: ReviewsPage }
-page ReviewsPage {
-  authRequired: true,
-  component: import ReviewsPage from "@src/app/reviews/ReviewsPage"
-}
 
 
 
@@ -243,6 +244,11 @@ query getServicesByBusinessAndUserId {
 
 action upsertBusiness {
   fn: import { upsertBusiness } from "@src/app/operations",
+  entities: [Business, User]
+}
+
+action completeOnboarding {
+  fn: import { completeOnboarding } from "@src/app/operations",
   entities: [Business, User]
 }
 
@@ -329,6 +335,11 @@ query getSchedule {
 query getOnboardingStatus {
   fn: import { getOnboardingStatus } from "@src/app/operations",
   entities: [User, Service, Schedule, ScheduleDay]
+}
+
+query getDashboardStats {
+  fn: import { getDashboardStats } from "@src/app/operations",
+  entities: [Business, Booking, Customer, Service, User]
 }
 
 action updateSchedule {
@@ -432,6 +443,33 @@ action deleteReview {
   entities: [Review, Business, User]
 }
 //#endregion
+
+//#region Intake Forms
+query getFormsByUser {
+  fn: import { getFormsByUser } from "@src/app/operations",
+  entities: [IntakeForm, FormQuestion, ServiceCategory, User]
+}
+
+query getFormById {
+  fn: import { getFormById } from "@src/app/operations",
+  entities: [IntakeForm, FormQuestion, ServiceCategory, User]
+}
+
+action createForm {
+  fn: import { createForm } from "@src/app/operations",
+  entities: [IntakeForm, FormQuestion, ServiceCategory, User]
+}
+
+action updateForm {
+  fn: import { updateForm } from "@src/app/operations",
+  entities: [IntakeForm, FormQuestion, ServiceCategory, User]
+}
+
+action deleteForm {
+  fn: import { deleteForm } from "@src/app/operations",
+  entities: [IntakeForm, FormQuestion, User]
+}
+//#endregion
 //#endregion
 
 //#region Public Booking
@@ -473,6 +511,16 @@ page AppointmentPage {
 query getBookingById {
   fn: import { getBookingById } from "@src/booking/operations",
   entities: [Booking, Service, Customer, User, Business]
+}
+
+query getFormForCategory {
+  fn: import { getFormForCategory } from "@src/booking/operations",
+  entities: [IntakeForm, FormQuestion, ServiceCategory]
+}
+
+action saveFormResponse {
+  fn: import { saveFormResponse } from "@src/booking/operations",
+  entities: [FormResponse]
 }
 //#endregion
 
@@ -563,6 +611,17 @@ job dailyStatsJob {
     // cron: "* * * * *" // every minute. useful for debugging
   },
   entities: [User, DailyStats, Logs, PageViewSource]
+}
+
+job appointmentReminderJob {
+  executor: PgBoss,
+  perform: {
+    fn: import { sendAppointmentReminders } from "@src/server/jobs/appointmentReminders"
+  },
+  schedule: {
+    cron: "*/5 * * * *" // every 5 minutes
+  },
+  entities: [Booking, Customer, Service, User, Business]
 }
 //#endregion
 

@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import DashboardLayout from "../layout/DashboardLayout";
 import { Briefcase, Plus, Edit2, Trash2, X, ChevronDown, Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useQuery, useAction } from "wasp/client/operations";
 import { useAuth } from "wasp/client/auth";
-import { getBusinessByUser, getServicesByBusinessAndUserId, createService, updateService, deleteService, getCategoriesByBusiness, createCategory } from "wasp/client/operations";
+import { getBusinessByUser, getServicesByBusinessAndUserId, createService, updateService, deleteService, getCategoriesByBusiness, createCategory, getFormsByUser } from "wasp/client/operations";
 import { cn } from "../../client/utils";
 import { ToastContainer } from "../../client/components/Toast";
+import { FileText, CreditCard, ExternalLink } from "lucide-react";
 
 export default function ServicesPage() {
     const { data: user } = useAuth();
@@ -15,6 +17,7 @@ export default function ServicesPage() {
         business?.id && user?.id ? { businessId: business.id, userId: user.id } : undefined,
         { enabled: !!business?.id && !!user?.id }
     );
+    const { data: forms } = useQuery(getFormsByUser);
 
     const createServiceAction = useAction(createService);
     const updateServiceAction = useAction(updateService);
@@ -30,6 +33,7 @@ export default function ServicesPage() {
         duration: 30,
         price: 0,
         description: "",
+        location: "", // Will be populated with user's default or custom
         isActive: true,
         categoryId: null as string | null
     });
@@ -46,6 +50,30 @@ export default function ServicesPage() {
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState("");
     const [isSavingCategory, setIsSavingCategory] = useState(false);
+
+    // Grouping Logic
+    const groupedServices = useMemo(() => {
+        if (!services) return {};
+        const groups: Record<string, any[]> = {};
+
+        // Sort services first
+        const sortedServices = [...services].sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1));
+
+        sortedServices.forEach((s: any) => {
+            const catName = s.category?.name || "Uncategorized";
+            if (!groups[catName]) groups[catName] = [];
+            groups[catName].push(s);
+        });
+        return groups;
+    }, [services]);
+
+    const sortedCategoryNames = useMemo(() => {
+        return Object.keys(groupedServices).sort((a, b) => {
+            if (a === "Uncategorized") return 1;
+            if (b === "Uncategorized") return -1;
+            return a.localeCompare(b);
+        });
+    }, [groupedServices]);
 
     const addToast = (message: string, type: 'success' | 'error') => {
         const id = Date.now().toString();
@@ -64,12 +92,22 @@ export default function ServicesPage() {
                 duration: service.duration,
                 price: service.price,
                 description: service.description || "",
+                location: service.location || "",
                 isActive: service.isActive,
                 categoryId: service.categoryId || null
             });
         } else {
             setEditingService(null);
-            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true, categoryId: null });
+            // Default to user's location when creating new service
+            setServiceForm({
+                name: "",
+                duration: 30,
+                price: 0,
+                description: "",
+                location: (user as any)?.location || "",
+                isActive: true,
+                categoryId: null
+            });
         }
         setIsCreatingCategory(false);
         setNewCategoryName("");
@@ -97,7 +135,15 @@ export default function ServicesPage() {
             await refetchServices();
             setIsServiceModalOpen(false);
             setEditingService(null);
-            setServiceForm({ name: "", duration: 30, price: 0, description: "", isActive: true, categoryId: null });
+            setServiceForm({
+                name: "",
+                duration: 30,
+                price: 0,
+                description: "",
+                location: (user as any)?.location || "",
+                isActive: true,
+                categoryId: null
+            });
         } catch (error: any) {
             addToast("Failed to save service: " + error.message, 'error');
         } finally {
@@ -182,68 +228,77 @@ export default function ServicesPage() {
                     </button>
                 </div>
 
-                {/* Services Grid */}
+                {/* Services Grid Rendered by Category */}
                 {services && services.length > 0 ? (
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        {[...services].sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1)).map((service: any) => (
-                            <div
-                                key={service.id}
-                                className={cn(
-                                    "group relative bg-background border-2 border-black p-5 aspect-square flex flex-col justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all",
-                                    !service.isActive && "opacity-60 grayscale-[0.3]"
-                                )}
-                            >
-                                <div>
-                                    <div className="flex items-start justify-between mb-3">
-                                        <div className="bg-primary p-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                                            <Briefcase className="size-4 text-black" />
+                    <div className="space-y-12">
+                        {sortedCategoryNames.map((catName) => (
+                            <div key={catName}>
+                                <h2 className="text-xl font-black uppercase mb-4 pl-1 border-l-4 border-primary leading-none">
+                                    {catName}
+                                </h2>
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {groupedServices[catName].map((service: any) => (
+                                        <div
+                                            key={service.id}
+                                            className={cn(
+                                                "group relative bg-background border-2 border-black p-5 aspect-square flex flex-col justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all",
+                                                !service.isActive && "opacity-60 grayscale-[0.3]"
+                                            )}
+                                        >
+                                            <div>
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="bg-primary p-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                                        <Briefcase className="size-4 text-black" />
+                                                    </div>
+                                                    <span className={cn(
+                                                        "px-1.5 py-0.5 text-[8px] font-black border-2 border-black uppercase whitespace-nowrap",
+                                                        service.isActive ? "bg-green-200" : "bg-gray-200"
+                                                    )}>
+                                                        {service.isActive ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </div>
+                                                <h3 className="font-black text-sm uppercase leading-tight line-clamp-2">{service.name}</h3>
+                                                {service.description && (
+                                                    <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
+                                                        {service.description}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            <div className="mt-auto pt-2 border-t-2 border-black/5">
+                                                <p className="text-xl font-black leading-none">${service.price}</p>
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">
+                                                    {formatDuration(service.duration)}
+                                                </p>
+                                            </div>
+
+                                            <div className="absolute inset-0 bg-white/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => openServiceModal(service)}
+                                                        className="p-2 border-2 border-black bg-white hover:bg-muted transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
+                                                    >
+                                                        <Edit2 className="size-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setDeleteModal({ isOpen: true, serviceId: service.id, serviceName: service.name })}
+                                                        className="p-2 border-2 border-black bg-red-100 hover:bg-red-200 transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
+                                                    >
+                                                        <Trash2 className="size-4 text-red-600" />
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleToggleActive(service)}
+                                                    className={cn(
+                                                        "px-3 py-1.5 border-2 border-black font-black text-[10px] uppercase transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]",
+                                                        service.isActive ? "bg-gray-200 text-black" : "bg-green-400 text-black"
+                                                    )}
+                                                >
+                                                    {service.isActive ? "Deactivate" : "Activate"}
+                                                </button>
+                                            </div>
                                         </div>
-                                        <span className={cn(
-                                            "px-1.5 py-0.5 text-[8px] font-black border-2 border-black uppercase whitespace-nowrap",
-                                            service.isActive ? "bg-green-200" : "bg-gray-200"
-                                        )}>
-                                            {service.isActive ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </div>
-                                    <h3 className="font-black text-sm uppercase leading-tight line-clamp-2">{service.name}</h3>
-                                    {service.description && (
-                                        <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
-                                            {service.description}
-                                        </p>
-                                    )}
-                                </div>
-
-                                <div className="mt-auto pt-2 border-t-2 border-black/5">
-                                    <p className="text-xl font-black leading-none">${service.price}</p>
-                                    <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">
-                                        {formatDuration(service.duration)}
-                                    </p>
-                                </div>
-
-                                <div className="absolute inset-0 bg-white/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => openServiceModal(service)}
-                                            className="p-2 border-2 border-black bg-white hover:bg-muted transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
-                                        >
-                                            <Edit2 className="size-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => setDeleteModal({ isOpen: true, serviceId: service.id, serviceName: service.name })}
-                                            className="p-2 border-2 border-black bg-red-100 hover:bg-red-200 transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]"
-                                        >
-                                            <Trash2 className="size-4 text-red-600" />
-                                        </button>
-                                    </div>
-                                    <button
-                                        onClick={() => handleToggleActive(service)}
-                                        className={cn(
-                                            "px-3 py-1.5 border-2 border-black font-black text-[10px] uppercase transition-all shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px]",
-                                            service.isActive ? "bg-gray-200 text-black" : "bg-green-400 text-black"
-                                        )}
-                                    >
-                                        {service.isActive ? "Deactivate" : "Activate"}
-                                    </button>
+                                    ))}
                                 </div>
                             </div>
                         ))}
@@ -262,6 +317,44 @@ export default function ServicesPage() {
                             <Plus className="size-4 inline mr-2" />
                             Add Service
                         </button>
+                    </div>
+                )}
+
+                {/* Info Banner - Booking Forms (Only show if no forms exist) */}
+                {(!forms || forms.length === 0) && services && services.length > 0 && (
+                    <div className="mt-8 bg-blue-50 border-2 border-blue-600 p-4 rounded-lg shadow-[4px_4px_0px_0px_rgba(59,130,246,0.5)]">
+                        <div className="flex items-start gap-3">
+                            <div className="flex-1">
+                                <h4 className="font-black text-blue-900 uppercase mb-1">Need a booking form?</h4>
+                                <p className="text-sm text-blue-800 font-medium">Collect customer info before appointments.</p>
+                            </div>
+                            <Link
+                                to="/app/forms"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-black text-xs uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
+                            >
+                                <FileText className="size-3" />
+                                Set up
+                            </Link>
+                        </div>
+                    </div>
+                )}
+
+                {/* Info Banner - Upfront Payments */}
+                {services && services.length > 0 && (
+                    <div className="mt-4 bg-green-50 border-2 border-green-600 p-4 rounded-lg shadow-[4px_4px_0px_0px_rgba(22,163,74,0.5)]">
+                        <div className="flex items-start gap-3">
+                            <div className="flex-1">
+                                <h4 className="font-black text-green-900 uppercase mb-1">Set payment up front</h4>
+                                <p className="text-sm text-green-800 font-medium">Increase appointment turn up rate. This action requires stripe account integrations.</p>
+                            </div>
+                            <Link
+                                to="/app/integrations"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white font-black text-xs uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
+                            >
+                                <CreditCard className="size-3" />
+                                Connect Stripe
+                            </Link>
+                        </div>
                     </div>
                 )}
 
@@ -323,9 +416,26 @@ export default function ServicesPage() {
                                     </div>
                                 </div>
 
+                                {/* Location Field */}
+                                <div>
+                                    <label className="block text-sm font-black uppercase mb-2">Service Location</label>
+                                    <input
+                                        type="text"
+                                        value={serviceForm.location}
+                                        onChange={(e) => setServiceForm({ ...serviceForm, location: e.target.value })}
+                                        className="w-full px-4 py-3 border-2 border-black font-bold text-sm"
+                                        placeholder={(user as any)?.location ? `Default: ${(user as any)?.location}` : "e.g., 123 Main St or Remote"}
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {(user as any)?.location
+                                            ? `Leave blank to use your default location: ${(user as any)?.location}`
+                                            : "This will be included in booking confirmations"}
+                                    </p>
+                                </div>
+
                                 {/* Category Dropdown */}
                                 <div>
-                                    <label className="block text-sm font-black uppercase mb-2">Category</label>
+                                    <label className="block text-sm font-black uppercase mb-2">Category *</label>
                                     {isCreatingCategory ? (
                                         <div className="flex gap-2">
                                             <input
@@ -358,8 +468,9 @@ export default function ServicesPage() {
                                                 value={serviceForm.categoryId || ""}
                                                 onChange={(e) => setServiceForm({ ...serviceForm, categoryId: e.target.value || null })}
                                                 className="w-full px-4 py-3 border-2 border-black font-bold text-sm appearance-none bg-white cursor-pointer"
+                                                required
                                             >
-                                                <option value="">No category</option>
+                                                <option value="">Select a category</option>
                                                 {(Array.isArray(categories) ? categories : []).map((cat: any) => (
                                                     <option key={cat.id} value={cat.id}>{cat.name}</option>
                                                 ))}

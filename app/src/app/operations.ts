@@ -10,8 +10,9 @@ export const getBusinessByUser: GetBusinessByUser<void, any> = async (_args, con
         throw new Error("You must be logged in");
     }
 
+    // Return null if user doesn't have a business yet (for onboarding)
     if (!context.user.businessId) {
-        throw new Error("Business not found");
+        return null;
     }
 
     const business = await context.entities.Business.findFirst({
@@ -169,6 +170,81 @@ export const upsertBusiness: UpsertBusiness<UpsertBusinessArgs, any> = async (ar
 
         return business;
     }
+};
+
+// Complete Onboarding - Create business and link to user during initial setup
+type CompleteOnboardingArgs = {
+    businessName: string;
+    businessCategory: string;
+    businessType: string; // "business" | "government" | "hobbyist" | "nonprofit" | "sole_proprietor"
+    appointmentType: string; // "onsite" | "online" | "both"
+    location: string; // Business address or "Remote"
+    timezone: string; // IANA timezone (e.g., "America/New_York")
+};
+
+// Helper function to generate a unique slug
+const generateUniqueSlug = async (name: string, entities: any): Promise<string> => {
+    let baseSlug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+
+    if (!baseSlug) baseSlug = 'business';
+
+    let slug = baseSlug;
+    let counter = 1;
+
+    while (true) {
+        const existing = await entities.Business.findFirst({
+            where: { slug }
+        });
+        if (!existing) break;
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+    }
+
+    return slug;
+};
+
+export const completeOnboarding: any = async (args: CompleteOnboardingArgs, context: any) => {
+    if (!context.user) {
+        throw new Error("You must be logged in");
+    }
+
+    // Check if user already has a business
+    const existingUser = await context.entities.User.findUnique({
+        where: { id: context.user.id },
+    });
+
+    if (existingUser?.businessId) {
+        throw new Error("You already have a business linked to your account");
+    }
+
+    // Generate unique slug
+    const slug = await generateUniqueSlug(args.businessName, context.entities);
+
+    // Create the business
+    const business = await context.entities.Business.create({
+        data: {
+            name: args.businessName,
+            slug,
+            users: { connect: { id: context.user.id } }
+        },
+    });
+
+    // Update user with business link, owner status, location, timezone, and mark onboarding complete
+    await context.entities.User.update({
+        where: { id: context.user.id },
+        data: {
+            isBusinessOwner: true,
+            onboardingCompleted: true,
+            username: args.businessName, // Set username to business name
+            location: args.location, // Set service location
+            timezone: args.timezone, // Set user's timezone
+        }
+    });
+
+    return business;
 };
 
 type UpdateIntegrationsArgs = {
@@ -431,6 +507,8 @@ type UpdateUserProfileArgs = {
     bufferBefore?: number;
     bufferAfter?: number;
     styleConfig?: string; // JSON string for page customization
+    maxAppointmentsMode?: string; // "fully_booked" or "max_per_day"
+    maxAppointmentsPerDay?: number;
 };
 
 export const updateUserProfile: any = async (args: UpdateUserProfileArgs, context: any) => {
@@ -454,6 +532,8 @@ export const updateUserProfile: any = async (args: UpdateUserProfileArgs, contex
             ...(args.bufferBefore !== undefined && { bufferBefore: args.bufferBefore }),
             ...(args.bufferAfter !== undefined && { bufferAfter: args.bufferAfter }),
             ...(args.styleConfig !== undefined && { styleConfig: args.styleConfig }),
+            ...(args.maxAppointmentsMode !== undefined && { maxAppointmentsMode: args.maxAppointmentsMode }),
+            ...(args.maxAppointmentsPerDay !== undefined && { maxAppointmentsPerDay: args.maxAppointmentsPerDay }),
         },
     });
 };
@@ -501,6 +581,7 @@ type CreateServiceArgs = {
     duration: number;
     price: number;
     categoryId?: string | null;
+    location?: string;
 };
 
 export const createService: CreateService<CreateServiceArgs, any> = async (args, context) => {
@@ -521,6 +602,10 @@ export const createService: CreateService<CreateServiceArgs, any> = async (args,
         throw new Error("Business not found or access denied");
     }
 
+    if (!args.categoryId) {
+        throw new Error("Category is required");
+    }
+
     return await context.entities.Service.create({
         data: {
             businessId: args.businessId,
@@ -530,6 +615,7 @@ export const createService: CreateService<CreateServiceArgs, any> = async (args,
             duration: args.duration,
             price: args.price,
             categoryId: args.categoryId,
+            location: args.location,
         },
     });
 };
@@ -542,6 +628,7 @@ type UpdateServiceArgs = {
     price?: number;
     isActive?: boolean;
     categoryId?: string | null;
+    location?: string;
 };
 
 export const updateService: UpdateService<UpdateServiceArgs, any> = async (args, context) => {
@@ -563,6 +650,10 @@ export const updateService: UpdateService<UpdateServiceArgs, any> = async (args,
     }
 
     const { id, ...updateData } = args;
+
+    if (updateData.categoryId === null) {
+        throw new Error("Category cannot be removed");
+    }
 
     return await context.entities.Service.update({
         where: { id },
@@ -810,6 +901,230 @@ export const getOnboardingStatus = async (_args: void, context: any) => {
         completedSteps,
         totalSteps: 3,
         completionPercentage
+    };
+};
+
+// Dashboard Stats Query - fetches real metrics with period filtering
+type DashboardStatsArgs = {
+    period: 'today' | '7days' | '30days' | 'year';
+};
+
+export const getDashboardStats = async (args: DashboardStatsArgs, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+    if (!context.user.businessId) throw new Error("Business not found");
+
+    const now = new Date();
+    const businessId = context.user.businessId;
+    const staffId = context.user.id;
+
+    // Calculate date ranges based on period
+    let startDate: Date;
+    let endDate: Date; // Added: end of current period
+    let previousStartDate: Date;
+    let previousEndDate: Date;
+    let chartLabels: string[] = [];
+    let chartGrouping: 'hour' | 'day' | 'month' = 'day';
+
+    switch (args.period) {
+        case 'today':
+            startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 1); // End of today (start of tomorrow)
+            previousStartDate = new Date(startDate);
+            previousStartDate.setDate(previousStartDate.getDate() - 1);
+            previousEndDate = new Date(startDate);
+            chartGrouping = 'hour';
+            for (let h = 0; h < 24; h++) chartLabels.push(`${h}:00`);
+            break;
+        case '7days':
+            startDate = new Date(now);
+            startDate.setDate(now.getDate() - 6);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(now);
+            endDate.setDate(endDate.getDate() + 1);
+            endDate.setHours(0, 0, 0, 0); // End of today
+            previousStartDate = new Date(startDate);
+            previousStartDate.setDate(previousStartDate.getDate() - 7);
+            previousEndDate = new Date(startDate);
+            chartGrouping = 'day';
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            for (let d = 0; d < 7; d++) {
+                const date = new Date(startDate);
+                date.setDate(date.getDate() + d);
+                chartLabels.push(days[date.getDay()]);
+            }
+            break;
+        case '30days':
+            startDate = new Date(now);
+            startDate.setDate(now.getDate() - 29);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(now);
+            endDate.setDate(endDate.getDate() + 1);
+            endDate.setHours(0, 0, 0, 0); // End of today
+            previousStartDate = new Date(startDate);
+            previousStartDate.setDate(previousStartDate.getDate() - 30);
+            previousEndDate = new Date(startDate);
+            chartGrouping = 'day';
+            for (let d = 0; d < 30; d++) {
+                const date = new Date(startDate);
+                date.setDate(date.getDate() + d);
+                chartLabels.push(`${date.getMonth() + 1}/${date.getDate()}`);
+            }
+            break;
+        case 'year':
+            startDate = new Date(now.getFullYear(), 0, 1);
+            endDate = new Date(now.getFullYear() + 1, 0, 1); // Start of next year
+            previousStartDate = new Date(now.getFullYear() - 1, 0, 1);
+            previousEndDate = new Date(now.getFullYear(), 0, 1);
+            chartGrouping = 'month';
+            chartLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            break;
+        default:
+            startDate = new Date(now);
+            startDate.setDate(now.getDate() - 6);
+            endDate = new Date(now);
+            endDate.setDate(endDate.getDate() + 1);
+            previousStartDate = new Date(startDate);
+            previousStartDate.setDate(previousStartDate.getDate() - 7);
+            previousEndDate = new Date(startDate);
+    }
+
+    // Current period bookings - now with proper date bounds
+    const currentBookings = await context.entities.Booking.findMany({
+        where: {
+            businessId,
+            staffId,
+            startTimeUtc: { gte: startDate, lt: endDate }, // Fixed: added upper bound
+            status: { not: 'cancelled' }
+        },
+        include: { service: true, customer: true }
+    });
+
+    // Previous period bookings (for comparison)
+    const previousBookings = await context.entities.Booking.findMany({
+        where: {
+            businessId,
+            staffId,
+            startTimeUtc: { gte: previousStartDate, lt: previousEndDate },
+            status: { not: 'cancelled' }
+        }
+    });
+
+    // Calculate stats
+    const totalBookings = currentBookings.length;
+    const previousTotalBookings = previousBookings.length;
+    const totalBookingsChange = previousTotalBookings > 0
+        ? Math.round(((totalBookings - previousTotalBookings) / previousTotalBookings) * 100)
+        : (totalBookings > 0 ? 100 : 0);
+
+    const revenue = currentBookings.reduce((sum: number, b: any) => sum + (b.price || 0), 0);
+    const previousRevenue = previousBookings.reduce((sum: number, b: any) => sum + (b.price || 0), 0);
+    const revenueChange = previousRevenue > 0
+        ? Math.round(((revenue - previousRevenue) / previousRevenue) * 100)
+        : (revenue > 0 ? 100 : 0);
+
+    // New clients in period - also with proper bounds
+    const newClients = await context.entities.Customer.count({
+        where: {
+            businessId,
+            createdAt: { gte: startDate, lt: endDate } // Fixed: added upper bound
+        }
+    });
+    const previousNewClients = await context.entities.Customer.count({
+        where: {
+            businessId,
+            createdAt: { gte: previousStartDate, lt: previousEndDate }
+        }
+    });
+    const newClientsChange = previousNewClients > 0
+        ? Math.round(((newClients - previousNewClients) / previousNewClients) * 100)
+        : (newClients > 0 ? 100 : 0);
+
+    // Average session duration
+    const avgSessionMinutes = totalBookings > 0
+        ? Math.round(currentBookings.reduce((sum: number, b: any) => sum + (b.service?.duration || 0), 0) / totalBookings)
+        : 0;
+    const previousAvgSession = previousTotalBookings > 0
+        ? previousBookings.reduce((sum: number, b: any) => sum + 30, 0) / previousTotalBookings // Fallback if no service info
+        : 0;
+    const avgSessionChange = previousAvgSession > 0
+        ? Math.round(((avgSessionMinutes - previousAvgSession) / previousAvgSession) * 100)
+        : 0;
+
+    // Build chart data
+    const chartData: { label: string; bookings: number }[] = [];
+
+    if (chartGrouping === 'hour') {
+        for (let h = 0; h < 24; h++) {
+            const count = currentBookings.filter((b: any) => new Date(b.startTimeUtc).getHours() === h).length;
+            chartData.push({ label: `${h}:00`, bookings: count });
+        }
+    } else if (chartGrouping === 'day') {
+        const numDays = args.period === '30days' ? 30 : 7;
+        for (let d = 0; d < numDays; d++) {
+            const dayStart = new Date(startDate);
+            dayStart.setDate(dayStart.getDate() + d);
+            const dayEnd = new Date(dayStart);
+            dayEnd.setDate(dayEnd.getDate() + 1);
+
+            const count = currentBookings.filter((b: any) => {
+                const bookingDate = new Date(b.startTimeUtc);
+                return bookingDate >= dayStart && bookingDate < dayEnd;
+            }).length;
+            chartData.push({ label: chartLabels[d], bookings: count });
+        }
+    } else if (chartGrouping === 'month') {
+        for (let m = 0; m < 12; m++) {
+            const count = currentBookings.filter((b: any) => new Date(b.startTimeUtc).getMonth() === m).length;
+            chartData.push({ label: chartLabels[m], bookings: count });
+        }
+    }
+
+    // Upcoming appointments (next 5 from now)
+    const upcomingBookings = await context.entities.Booking.findMany({
+        where: {
+            businessId,
+            staffId,
+            startTimeUtc: { gte: now },
+            status: { not: 'cancelled' }
+        },
+        include: { service: true, customer: true },
+        orderBy: { startTimeUtc: 'asc' },
+        take: 5
+    });
+
+    const upcomingAppointments = upcomingBookings.map((b: any) => {
+        const bookingDate = new Date(b.startTimeUtc);
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        let dateLabel = bookingDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        if (bookingDate.toDateString() === today.toDateString()) dateLabel = 'Today';
+        else if (bookingDate.toDateString() === tomorrow.toDateString()) dateLabel = 'Tomorrow';
+
+        const timeLabel = bookingDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+        return {
+            id: b.id,
+            clientName: b.customer?.name || 'Unknown',
+            serviceName: b.service?.name || 'Service',
+            time: timeLabel,
+            date: dateLabel
+        };
+    });
+
+    return {
+        totalBookings,
+        totalBookingsChange,
+        revenue,
+        revenueChange,
+        newClients,
+        newClientsChange,
+        avgSessionMinutes,
+        avgSessionChange,
+        chartData,
+        upcomingAppointments
     };
 };
 
@@ -1154,6 +1469,7 @@ export const createBooking: CreateBooking<CreateBookingArgs, any> = async (args,
     // Sync to Google Calendar if staff has connected
     const staff = await context.entities.User.findUnique({
         where: { id: args.staffId },
+        include: { business: true },
     });
 
     if (staff?.googRefreshToken) {
@@ -1161,7 +1477,11 @@ export const createBooking: CreateBooking<CreateBookingArgs, any> = async (args,
             const eventData = formatBookingForCalendar({
                 service,
                 customer,
-                staff: booking.staff,
+                staff: {
+                    username: staff.username,
+                    business: staff.business || null,
+                    timezone: staff.timezone || null,
+                },
                 startTimeUtc,
                 endTimeUtc,
                 notes: args.notes,
@@ -1290,6 +1610,7 @@ export const updateBooking: any = async (args: UpdateBookingArgs, context: any) 
     if (booking.googleCalendarEventId) {
         const staff = await context.entities.User.findUnique({
             where: { id: updatedBooking.staffId },
+            include: { business: true },
         });
 
         if (staff?.googRefreshToken) {
@@ -1297,7 +1618,11 @@ export const updateBooking: any = async (args: UpdateBookingArgs, context: any) 
                 const eventData = formatBookingForCalendar({
                     service: updatedBooking.service,
                     customer: updatedBooking.customer,
-                    staff: updatedBooking.staff,
+                    staff: {
+                        username: staff.username,
+                        business: staff.business || null,
+                        timezone: staff.timezone || null,
+                    },
                     startTimeUtc: updatedBooking.startTimeUtc,
                     endTimeUtc: updatedBooking.endTimeUtc,
                     notes: updatedBooking.notes,
@@ -1308,6 +1633,31 @@ export const updateBooking: any = async (args: UpdateBookingArgs, context: any) 
                 console.error('Failed to update Google Calendar event:', error);
             }
         }
+    }
+
+    // Send update emails to customer and business
+    try {
+        const { sendBookingUpdate } = await import("../server/integrations/bookingEmails");
+
+        // Get business info for email
+        const business = await context.entities.Business.findUnique({
+            where: { id: updatedBooking.staff.businessId || '' },
+        });
+
+        await sendBookingUpdate({
+            bookingId: updatedBooking.id,
+            customerName: updatedBooking.customer.name,
+            customerEmail: updatedBooking.customer.email || undefined,
+            customerPhone: updatedBooking.customer.phone,
+            businessName: business?.name || updatedBooking.staff.username || 'Business',
+            businessEmail: updatedBooking.staff.email || undefined,
+            businessTimezone: updatedBooking.staff.timezone || 'UTC',
+            serviceName: updatedBooking.service.name,
+            startTimeUtc: updatedBooking.startTimeUtc,
+        });
+        console.log('[updateBooking] Update emails sent');
+    } catch (error) {
+        console.error('[updateBooking] Failed to send update emails:', error);
     }
 
     return updatedBooking;
@@ -1603,4 +1953,191 @@ export const getGoogleCalendarEvents: any = async (args: { timeMin: string; time
         console.error('Error fetching Google Calendar events:', error);
         return { events: [] };
     }
+};
+
+// ============================================
+// Intake Forms CRUD Operations
+// ============================================
+
+export const getFormsByUser = async (_args: void, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const forms = await context.entities.IntakeForm.findMany({
+        where: { userId: context.user.id },
+        include: {
+            questions: { orderBy: { order: 'asc' } },
+            categories: true
+        },
+        orderBy: { createdAt: 'desc' }
+    });
+
+    return forms;
+};
+
+export const getFormById = async (args: { id: string }, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const form = await context.entities.IntakeForm.findFirst({
+        where: { id: args.id, userId: context.user.id },
+        include: {
+            questions: { orderBy: { order: 'asc' } },
+            categories: true
+        }
+    });
+
+    if (!form) throw new Error("Form not found");
+    return form;
+};
+
+type CreateFormArgs = {
+    name?: string;
+    description?: string;
+    isInternal?: boolean;
+    categoryIds: string[];
+    questions: {
+        type: string;
+        label: string;
+        options?: string;
+        isRequired?: boolean;
+        order: number;
+    }[];
+};
+
+export const createForm = async (args: CreateFormArgs, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    const form = await context.entities.IntakeForm.create({
+        data: {
+            userId: context.user.id,
+            name: args.name,
+            description: args.description,
+            isInternal: args.isInternal || false,
+            categories: {
+                connect: args.categoryIds.map(id => ({ id }))
+            },
+            questions: {
+                create: args.questions.map((q, idx) => ({
+                    type: q.type,
+                    label: q.label,
+                    options: q.options,
+                    isRequired: q.isRequired || false,
+                    order: q.order ?? idx
+                }))
+            }
+        },
+        include: {
+            questions: { orderBy: { order: 'asc' } },
+            categories: true
+        }
+    });
+
+    return form;
+};
+
+type UpdateFormArgs = {
+    id: string;
+    name?: string;
+    description?: string;
+    isInternal?: boolean;
+    categoryIds?: string[];
+    questions?: {
+        id?: string; // If id exists, update; else create
+        type: string;
+        label: string;
+        options?: string;
+        isRequired?: boolean;
+        order: number;
+    }[];
+};
+
+export const updateForm = async (args: UpdateFormArgs, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    // Verify ownership
+    const existing = await context.entities.IntakeForm.findFirst({
+        where: { id: args.id, userId: context.user.id }
+    });
+    if (!existing) throw new Error("Form not found");
+
+    // Handle questions: delete removed, update existing, create new
+    if (args.questions) {
+        // Get existing question IDs
+        const existingQuestions = await context.entities.FormQuestion.findMany({
+            where: { formId: args.id }
+        });
+        const existingIds = existingQuestions.map((q: any) => q.id);
+        const incomingIds = args.questions.filter(q => q.id).map(q => q.id);
+
+        // Delete questions not in incoming list
+        const toDelete = existingIds.filter((id: string) => !incomingIds.includes(id));
+        if (toDelete.length > 0) {
+            await context.entities.FormQuestion.deleteMany({
+                where: { id: { in: toDelete } }
+            });
+        }
+
+        // Upsert questions
+        for (const q of args.questions) {
+            if (q.id) {
+                await context.entities.FormQuestion.update({
+                    where: { id: q.id },
+                    data: {
+                        type: q.type,
+                        label: q.label,
+                        options: q.options,
+                        isRequired: q.isRequired || false,
+                        order: q.order
+                    }
+                });
+            } else {
+                await context.entities.FormQuestion.create({
+                    data: {
+                        formId: args.id,
+                        type: q.type,
+                        label: q.label,
+                        options: q.options,
+                        isRequired: q.isRequired || false,
+                        order: q.order
+                    }
+                });
+            }
+        }
+    }
+
+    // Update form and categories
+    const form = await context.entities.IntakeForm.update({
+        where: { id: args.id },
+        data: {
+            name: args.name,
+            description: args.description,
+            isInternal: args.isInternal,
+            ...(args.categoryIds && {
+                categories: {
+                    set: args.categoryIds.map(id => ({ id }))
+                }
+            })
+        },
+        include: {
+            questions: { orderBy: { order: 'asc' } },
+            categories: true
+        }
+    });
+
+    return form;
+};
+
+export const deleteForm = async (args: { id: string }, context: any) => {
+    if (!context.user) throw new Error("You must be logged in");
+
+    // Verify ownership
+    const existing = await context.entities.IntakeForm.findFirst({
+        where: { id: args.id, userId: context.user.id }
+    });
+    if (!existing) throw new Error("Form not found");
+
+    await context.entities.IntakeForm.delete({
+        where: { id: args.id }
+    });
+
+    return { success: true };
 };

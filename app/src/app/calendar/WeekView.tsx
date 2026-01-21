@@ -1,6 +1,6 @@
-import { useState } from "react";
 import { startOfWeek, endOfWeek, eachDayOfInterval, format, isToday, isSameDay } from "date-fns";
 import { cn } from "../../client/utils";
+import { Clock } from "lucide-react";
 
 interface Appointment {
     id: number;
@@ -25,9 +25,10 @@ interface WeekViewProps {
     appointments: Appointment[];
     onAppointmentClick?: (e: React.MouseEvent, apt: Appointment) => void;
     isAppointmentPast?: (apt: Appointment) => boolean;
+    schedule?: any;
 }
 
-export default function WeekView({ currentDate, appointments, onAppointmentClick, isAppointmentPast }: WeekViewProps & { onAppointmentClick?: (e: React.MouseEvent, apt: Appointment) => void }) {
+export default function WeekView({ currentDate, appointments, onAppointmentClick, isAppointmentPast, schedule }: WeekViewProps) {
 
     const startDate = startOfWeek(currentDate);
     const endDate = endOfWeek(currentDate);
@@ -37,16 +38,60 @@ export default function WeekView({ currentDate, appointments, onAppointmentClick
         end: endDate,
     });
 
-    // Generate time slots from 8 AM to 8 PM
+    // Calculate min/max hours from schedule across all days of the week
+    const { minHour, maxHour, availableDays } = (() => {
+        let min = 24;
+        let max = 0;
+        const available = new Set<string>();
+
+        // 1. Check schedule
+        if (schedule?.days && schedule.days.length > 0) {
+            schedule.days.forEach((day: any) => {
+                if (day.startTime && day.endTime) {
+                    available.add(day.dayOfWeek);
+                    const [startHour] = day.startTime.split(':').map(Number);
+                    const [endHour] = day.endTime.split(':').map(Number);
+                    min = Math.min(min, startHour);
+                    max = Math.max(max, endHour);
+                }
+            });
+        }
+
+        // 2. Check appointments (essential to show bookings on weekends/off-hours)
+        appointments.forEach(apt => {
+            if (apt.time) {
+                const [h] = apt.time.split(':').map(Number);
+                min = Math.min(min, h);
+                const durationMinutes = apt.duration.includes('h')
+                    ? parseFloat(apt.duration) * 60
+                    : parseInt(apt.duration) || 60;
+                const endH = Math.ceil(h + (durationMinutes / 60));
+                max = Math.max(max, endH);
+            }
+        });
+
+        // 3. Fallbacks
+        const finalMinHour = min === 24 ? 9 : Math.max(0, min);
+        // Add 1 hour buffer after the last appointment/closing time
+        const finalMaxHour = max === 0 ? 17 : Math.min(24, max + 1);
+
+        return {
+            minHour: finalMinHour,
+            maxHour: finalMaxHour,
+            availableDays: available
+        };
+    })();
+
+    // Generate time slots from minHour to maxHour
     const timeSlots: number[] = [];
-    for (let i = 8; i <= 20; i++) {
+    for (let i = minHour; i < maxHour; i++) {
         timeSlots.push(i);
     }
 
     // Helper to calculate top offset and height based on time and duration
     const getPositionStyle = (time: string, durationStr: string) => {
         const [hours, minutes] = time.split(':').map(Number);
-        const startMinutes = (hours - 8) * 60 + minutes;
+        const startMinutes = (hours - minHour) * 60 + minutes;
 
         let durationMinutes = 60;
         if (durationStr.includes('h')) {
@@ -66,12 +111,19 @@ export default function WeekView({ currentDate, appointments, onAppointmentClick
         const now = new Date();
         const hours = now.getHours();
         const minutes = now.getMinutes();
-        const totalMinutes = (hours - 8) * 60 + minutes; // 8am is 0 position
+        const totalMinutes = (hours - minHour) * 60 + minutes;
         return totalMinutes;
     };
 
     const currentTimePosition = getCurrentTimePosition();
-    const showCurrentTimeLine = currentTimePosition >= 0 && currentTimePosition <= (14 * 60); // Show between 8am-10pm
+    const showCurrentTimeLine = currentTimePosition >= 0 && currentTimePosition <= ((maxHour - minHour) * 60);
+
+    // Helper to check if a day is available
+    const isDayAvailable = (day: Date) => {
+        const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+        const dayOfWeek = dayNames[day.getDay()];
+        return availableDays.has(dayOfWeek);
+    };
 
     // Format time range (e.g., "2-4pm" or "9am-12pm")
     const formatTimeRange = (startTime: string, durationMinutes: number) => {
@@ -170,22 +222,29 @@ export default function WeekView({ currentDate, appointments, onAppointmentClick
     };
 
     return (
-        <div className="overflow-hidden flex flex-col h-full bg-background/50 max-h-[calc(100vh-250px)] min-h-[500px]">
+        <div className="overflow-hidden flex flex-col h-full bg-background/50">
             {/* Header: Days */}
-            <div className="grid grid-cols-8 border-b-2 border-black flex-shrink-0">
-                <div className="p-2 border-r-2 border-black bg-muted/30"></div>
+            <div className="grid grid-cols-8 border-b-4 border-black flex-shrink-0 bg-white">
+                <div className="p-4 border-r-4 border-black bg-neutral-100 flex items-center justify-center">
+                    <Clock className="w-5 h-5 text-neutral-400" />
+                </div>
                 {weekDays.map((day) => (
                     <div
                         key={day.toString()}
                         className={cn(
-                            "p-2 text-center border-r-2 border-black last:border-r-0 bg-muted/30",
-                            isToday(day) && "bg-primary/20"
+                            "p-3 text-center border-r-4 border-black last:border-r-0",
+                            isToday(day) && "bg-primary/10",
+                            !isDayAvailable(day) && "bg-neutral-50"
                         )}
                     >
-                        <p className="text-xs font-bold uppercase text-muted-foreground">{format(day, 'EEE')}</p>
+                        <p className={cn(
+                            "text-xs font-black uppercase text-muted-foreground tracking-widest",
+                            !isDayAvailable(day) && "opacity-30"
+                        )}>{format(day, 'EEE')}</p>
                         <div className={cn(
-                            "mx-auto w-8 h-8 flex items-center justify-center rounded-full font-black text-lg mt-1",
-                            isToday(day) && "bg-primary border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            "mx-auto w-10 h-10 flex items-center justify-center rounded-full font-black text-xl mt-1 transition-all",
+                            isToday(day) ? "bg-black text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)]" : "text-black",
+                            !isDayAvailable(day) && "opacity-30"
                         )}>
                             {format(day, 'd')}
                         </div>
@@ -197,10 +256,10 @@ export default function WeekView({ currentDate, appointments, onAppointmentClick
             <div className="flex-1 overflow-y-auto relative no-scrollbar">
                 <div className="grid grid-cols-8">
                     {/* Time Column */}
-                    <div className="border-r-2 border-black bg-muted/10">
+                    <div className="border-r-4 border-black bg-neutral-50/50">
                         {timeSlots.map((hour) => (
-                            <div key={hour} className="h-[60px] border-b border-black/10 flex items-start justify-end pr-2 pt-1">
-                                <span className="text-xs font-bold text-muted-foreground">
+                            <div key={hour} className="h-[60px] border-b-2 border-black/5 flex items-start justify-end pr-3 pt-2">
+                                <span className="text-[10px] font-black uppercase text-neutral-400 tracking-tighter">
                                     {format(new Date().setHours(hour, 0), 'ha')}
                                 </span>
                             </div>
@@ -211,16 +270,32 @@ export default function WeekView({ currentDate, appointments, onAppointmentClick
                     {weekDays.map((day) => {
                         const dayAppointments = appointments.filter(apt => isSameDay(apt.date, day));
                         const layouts = getAppointmentLayout(dayAppointments);
+                        const dayAvailable = isDayAvailable(day);
 
                         return (
                             <div
                                 key={day.toString()}
-                                className="border-r-2 border-black last:border-r-0 relative"
+                                className={cn(
+                                    "border-r-4 border-black last:border-r-0 relative group",
+                                    !dayAvailable && "bg-neutral-50"
+                                )}
                             >
-                                {/* Time Lines */}
+                                {/* Grid Background Lines */}
                                 {timeSlots.map(hour => (
-                                    <div key={hour} className="h-[60px] border-b border-black/10"></div>
+                                    <div key={hour} className={cn(
+                                        "h-[60px] border-b-2 border-black/5 transition-colors group-hover:bg-black/5",
+                                        !dayAvailable && "bg-neutral-100/20 shadow-inner"
+                                    )}></div>
                                 ))}
+
+                                {/* Unavailable Day Indicator */}
+                                {!dayAvailable && (
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0">
+                                        <p className="text-[10px] font-black uppercase text-neutral-300 rotate-[-90deg] tracking-[0.5em] whitespace-nowrap opacity-50">
+                                            Unavailable
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Appointments Overlay */}
                                 {layouts.map(layout => {

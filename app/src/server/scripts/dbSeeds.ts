@@ -74,7 +74,11 @@ function generateMockUserData(): MockUserData {
     timezone: "UTC",
     bufferBefore: 0,
     bufferAfter: 0,
+    maxAppointmentsMode: "fully_booked",
+    maxAppointmentsPerDay: 0,
     styleConfig: null,
+    onboardingCompleted: false,
+    location: null,
   };
 }
 

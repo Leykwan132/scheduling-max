@@ -3,6 +3,8 @@ import { HttpError } from "wasp/server";
 import { getDownloadFileSignedURLFromS3 } from "../file-upload/s3Utils";
 import { availableSlotsForWindow, type TimeRange } from "../utils/availableSlots";
 import { createGoogleCalendarEvent, formatBookingForCalendar, updateGoogleCalendarEvent, deleteGoogleCalendarEvent } from "../server/integrations/googleCalendar";
+import { sendBookingConfirmationSms, isTwilioConfigured, isSmsEnabled } from "../server/integrations/twilioSms";
+import { sendBookingConfirmation } from "../server/integrations/bookingEmails";
 
 export const getUserBySlug: GetUserBySlug<{ slug: string }, any> = async (args, context) => {
     const user = await context.entities.User.findUnique({
@@ -38,6 +40,7 @@ export const getUserBySlug: GetUserBySlug<{ slug: string }, any> = async (args, 
         profileImageUrl,
         profileImageFile: undefined,
         timezone: user.timezone || "UTC",
+        smsEnabled: isSmsEnabled(), // Expose SMS feature status to frontend
     };
 };
 
@@ -169,6 +172,19 @@ export const getAvailableSlots: GetAvailableSlots<GetAvailableSlotsArgs, string[
         },
     });
 
+    // Check if max appointments per day limit is reached
+    if (user.maxAppointmentsMode === 'max_per_day' && user.maxAppointmentsPerDay && user.maxAppointmentsPerDay > 0) {
+        const bookingsForDate = allBookings.filter((b: any) => {
+            const bookingDateStr = b.startTimeUtc.toISOString().split('T')[0];
+            return bookingDateStr === args.date;
+        });
+
+        if (bookingsForDate.length >= user.maxAppointmentsPerDay) {
+            console.log("[getAvailableSlots] Max appointments reached for date:", args.date, `(${bookingsForDate.length}/${user.maxAppointmentsPerDay})`);
+            return []; // No slots available - limit reached
+        }
+    }
+
     // Use a fixed reference date so all times are comparable
     const REFERENCE_DATE = Date.UTC(2000, 0, 1, 0, 0, 0);
 
@@ -269,10 +285,57 @@ type CreatePublicBookingArgs = {
     clientEmail?: string;
     notes?: string;
     visitorTimezone?: string;
+    reminderPreference?: string; // "sms", "email", or "both"
 };
 
+/**
+ * Helper function to convert local time in a specific timezone to UTC
+ * @param year - Full year (e.g., 2026)
+ * @param month - Month (1-12)
+ * @param day - Day of month
+ * @param hour - Hour (0-23)
+ * @param minute - Minute (0-59)
+ * @param timezone - IANA timezone string (e.g., 'Asia/Singapore')
+ * @returns Date object representing the UTC time
+ */
+function localTimeToUTC(year: number, month: number, day: number, hour: number, minute: number, timezone: string): Date {
+    // Create an ISO date string
+    const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+
+    // Create a reference UTC date  
+    const utcRef = new Date(dateString + 'Z'); // Z suffix means UTC
+
+    // Format this UTC date as it appears in the target timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+
+    const parts = formatter.formatToParts(utcRef);
+    const tzYear = parseInt(parts.find(p => p.type === 'year')!.value);
+    const tzMonth = parseInt(parts.find(p => p.type === 'month')!.value);
+    const tzDay = parseInt(parts.find(p => p.type === 'day')!.value);
+    const tzHour = parseInt(parts.find(p => p.type === 'hour')!.value);
+    const tzMinute = parseInt(parts.find(p => p.type === 'minute')!.value);
+
+    // Calculate the offset in minutes
+    const targetMinutes = hour * 60 + minute;
+    const tzMinutes = tzHour * 60 + tzMinute;
+    const dayDiff = (year - tzYear) * 1440 + (month - tzMonth) * 43200 + (day - tzDay) * 1440; // Rough day difference
+    const offsetMinutes = tzMinutes - targetMinutes + dayDiff;
+
+    // Apply offset to get the correct UTC time
+    return new Date(utcRef.getTime() - offsetMinutes * 60000);
+}
+
 export const createPublicBooking: CreatePublicBooking<CreatePublicBookingArgs, any> = async (args, context) => {
-    const { slug, serviceId, date, time, clientName, clientPhone, clientEmail, notes } = args;
+    const { slug, serviceId, date, time, clientName, clientPhone, clientEmail, notes, reminderPreference = 'email' } = args;
 
     console.log("[createPublicBooking] Called with:", { slug, serviceId, date, time });
 
@@ -434,9 +497,17 @@ export const createPublicBooking: CreatePublicBooking<CreatePublicBookingArgs, a
         });
     }
 
-    // Compute UTC timestamps
-    const startTimeUtc = new Date(Date.UTC(year, month - 1, day, startH, startM));
+    // Compute UTC timestamps - convert from business timezone to UTC
+    const businessTimezone = user.timezone || 'UTC';
+    console.log('[createPublicBooking] Converting local time to UTC:', { date, time, timezone: businessTimezone });
+
+    const startTimeUtc = localTimeToUTC(year, month, day, startH, startM, businessTimezone);
     const endTimeUtc = new Date(startTimeUtc.getTime() + service.duration * 60000);
+
+    console.log('[createPublicBooking] Computed times:', {
+        startTimeUtc: startTimeUtc.toISOString(),
+        endTimeUtc: endTimeUtc.toISOString()
+    });
 
     // Create Booking
     let booking = await context.entities.Booking.create({
@@ -451,6 +522,7 @@ export const createPublicBooking: CreatePublicBooking<CreatePublicBookingArgs, a
             status: "confirmed",
             startTimeUtc,
             endTimeUtc,
+            reminderPreference,
         }
     });
 
@@ -462,6 +534,11 @@ export const createPublicBooking: CreatePublicBooking<CreatePublicBookingArgs, a
             const eventData = formatBookingForCalendar({
                 service,
                 customer,
+                staff: {
+                    username: user.username,
+                    business: user.business || null,
+                    timezone: user.timezone || null,
+                },
                 startTimeUtc,
                 endTimeUtc,
                 notes,
@@ -479,6 +556,46 @@ export const createPublicBooking: CreatePublicBooking<CreatePublicBookingArgs, a
         } catch (error) {
             console.error('[createPublicBooking] Failed to sync to Google Calendar:', error);
         }
+    }
+
+    // Send confirmation SMS if preference is 'sms' or 'both'
+    if ((reminderPreference === 'sms' || reminderPreference === 'both') && isTwilioConfigured()) {
+        try {
+            const baseUrl = process.env.WASP_WEB_CLIENT_URL || 'http://localhost:3000';
+            const appointmentUrl = `${baseUrl}/appointment/${booking.id}`;
+
+            await sendBookingConfirmationSms({
+                bookingId: booking.id,
+                customerName: clientName,
+                customerPhone: clientPhone,
+                serviceName: service.name,
+                providerName: user.username || user.business?.name || 'Provider',
+                startTimeUtc,
+                appointmentUrl,
+            });
+            console.log('[createPublicBooking] Confirmation SMS sent');
+        } catch (error) {
+            console.error('[createPublicBooking] Failed to send confirmation SMS:', error);
+        }
+    }
+
+    // Send confirmation emails to customer and business
+    try {
+        await sendBookingConfirmation({
+            bookingId: booking.id,
+            customerName: clientName,
+            customerEmail: clientEmail,
+            customerPhone: clientPhone,
+            businessName: user.business?.name || user.username || 'Business',
+            businessEmail: user.email || undefined,
+            businessTimezone: user.timezone || 'UTC',
+            serviceName: service.name,
+            startTimeUtc,
+            location: service.location || user.location || undefined,
+        });
+        console.log('[createPublicBooking] Confirmation emails sent');
+    } catch (error) {
+        console.error('[createPublicBooking] Failed to send confirmation emails:', error);
     }
 
     return booking;
@@ -504,6 +621,7 @@ export const reschedulePublicBooking: ReschedulePublicBooking<ReschedulePublicBo
             service: true,
             staff: {
                 include: {
+                    business: true,
                     schedules: {
                         include: { days: true, overrides: true }
                     }
@@ -613,8 +731,9 @@ export const reschedulePublicBooking: ReschedulePublicBooking<ReschedulePublicBo
         throw new HttpError(409, "Selected time slot is already booked");
     }
 
-    // Compute new UTC timestamps
-    const newStartTimeUtc = new Date(Date.UTC(year, month - 1, day, startH, startM));
+    // Compute new UTC timestamps - convert from business timezone to UTC
+    const businessTimezone = user.timezone || 'UTC';
+    const newStartTimeUtc = localTimeToUTC(year, month, day, startH, startM, businessTimezone);
     const newEndTimeUtc = new Date(newStartTimeUtc.getTime() + service.duration * 60000);
     const newBookingDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
 
@@ -641,6 +760,11 @@ export const reschedulePublicBooking: ReschedulePublicBooking<ReschedulePublicBo
             const eventData = formatBookingForCalendar({
                 service,
                 customer: existingBooking.customer,
+                staff: {
+                    username: user.username,
+                    business: user.business || null,
+                    timezone: user.timezone || null,
+                },
                 startTimeUtc: newStartTimeUtc,
                 endTimeUtc: newEndTimeUtc,
                 notes: existingBooking.notes,
@@ -666,11 +790,15 @@ export const cancelPublicBooking: CancelPublicBooking<CancelPublicBookingArgs, a
 
     console.log("[cancelPublicBooking] Called with:", { bookingId });
 
-    // Get existing booking
+    // Get existing booking with all related data for emails
     const existingBooking = await context.entities.Booking.findUnique({
         where: { id: bookingId },
         include: {
-            staff: true
+            staff: {
+                include: { business: true }
+            },
+            customer: true,
+            service: true
         }
     });
 
@@ -700,6 +828,26 @@ export const cancelPublicBooking: CancelPublicBooking<CancelPublicBookingArgs, a
         } catch (error) {
             console.error('[cancelPublicBooking] Failed to delete Google Calendar event:', error);
         }
+    }
+
+    // Send cancellation emails to customer and business
+    try {
+        const { sendBookingCancellation } = await import("../server/integrations/bookingEmails");
+
+        await sendBookingCancellation({
+            bookingId: existingBooking.id,
+            customerName: existingBooking.customer.name,
+            customerEmail: existingBooking.customer.email || undefined,
+            customerPhone: existingBooking.customer.phone,
+            businessName: existingBooking.staff.business?.name || existingBooking.staff.username || 'Business',
+            businessEmail: existingBooking.staff.email || undefined,
+            businessTimezone: existingBooking.staff.timezone || 'UTC',
+            serviceName: existingBooking.service.name,
+            startTimeUtc: existingBooking.startTimeUtc,
+        });
+        console.log('[cancelPublicBooking] Cancellation emails sent');
+    } catch (error) {
+        console.error('[cancelPublicBooking] Failed to send cancellation emails:', error);
     }
 
     return cancelledBooking;
@@ -751,4 +899,42 @@ export const getBookingById: GetBookingById<GetBookingByIdArgs, any> = async (ar
             profileImageFile: undefined,
         }
     };
+};
+
+/**
+ * Get intake form for a specific category (public - no auth required)
+ * Used by BookingPage to show form questions before contact details
+ */
+export const getFormForCategory = async (args: { categoryId: string }, context: any) => {
+    if (!args.categoryId) return null;
+
+    const form = await context.entities.IntakeForm.findFirst({
+        where: {
+            categories: { some: { id: args.categoryId } },
+            isInternal: false // Only show non-internal forms to clients
+        },
+        include: {
+            questions: { orderBy: { order: 'asc' } }
+        }
+    });
+
+    return form;
+};
+
+/**
+ * Save form response when booking is created
+ */
+export const saveFormResponse = async (
+    args: { formId: string; bookingId: string; answers: Record<string, any> },
+    context: any
+) => {
+    const response = await context.entities.FormResponse.create({
+        data: {
+            formId: args.formId,
+            bookingId: args.bookingId,
+            answers: JSON.stringify(args.answers)
+        }
+    });
+
+    return response;
 };

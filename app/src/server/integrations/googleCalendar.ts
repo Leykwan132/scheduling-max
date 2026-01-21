@@ -8,6 +8,7 @@ interface BookingEventData {
     startTimeUtc: Date;
     endTimeUtc: Date;
     customerEmail?: string;
+    timezone?: string; // Business owner's timezone
 }
 
 /**
@@ -20,16 +21,19 @@ export const createGoogleCalendarEvent = async (
     try {
         const accessToken = await getGoogleAccessToken(refreshToken);
 
+        // Use business timezone if provided, otherwise UTC
+        const timeZone = data.timezone || 'UTC';
+
         const event = {
             summary: data.title,
             description: data.description,
             start: {
                 dateTime: data.startTimeUtc.toISOString(),
-                timeZone: 'UTC',
+                timeZone: timeZone,
             },
             end: {
                 dateTime: data.endTimeUtc.toISOString(),
-                timeZone: 'UTC',
+                timeZone: timeZone,
             },
             attendees: data.customerEmail ? [{ email: data.customerEmail }] : undefined,
         };
@@ -69,16 +73,19 @@ export const updateGoogleCalendarEvent = async (
     try {
         const accessToken = await getGoogleAccessToken(refreshToken);
 
+        // Use business timezone if provided, otherwise UTC
+        const timeZone = data.timezone || 'UTC';
+
         const event = {
             summary: data.title,
             description: data.description,
             start: {
                 dateTime: data.startTimeUtc.toISOString(),
-                timeZone: 'UTC',
+                timeZone: timeZone,
             },
             end: {
                 dateTime: data.endTimeUtc.toISOString(),
-                timeZone: 'UTC',
+                timeZone: timeZone,
             },
         };
 
@@ -143,7 +150,7 @@ export const deleteGoogleCalendarEvent = async (
 export const formatBookingForCalendar = (booking: {
     service: { name: string };
     customer: { name: string; phone: string; email?: string | null };
-    staff?: { username?: string | null };
+    staff?: { username?: string | null; business?: { name?: string | null } | null; timezone?: string | null };
     startTimeUtc: Date;
     endTimeUtc: Date;
     notes?: string | null;
@@ -157,12 +164,15 @@ export const formatBookingForCalendar = (booking: {
         booking.notes ? `Notes: ${booking.notes}` : null,
     ].filter(Boolean).join('\n');
 
+    const businessName = booking.staff?.business?.name || booking.staff?.username || 'Business';
+
     return {
-        title: `${booking.service.name} - ${booking.customer.name}`,
+        title: `${booking.service.name} with ${businessName}`,
         description,
         startTimeUtc: booking.startTimeUtc,
         endTimeUtc: booking.endTimeUtc,
         customerEmail: booking.customer.email || undefined,
+        timezone: booking.staff?.timezone || undefined,
     };
 };
 

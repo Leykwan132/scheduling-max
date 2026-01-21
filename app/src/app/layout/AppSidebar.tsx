@@ -18,10 +18,11 @@ import {
     ChevronLeft,
     ClipboardList,
     Building2,
-    Star,
+
     LayoutList,
     Clock2,
-    Briefcase
+    Briefcase,
+    FileText
 } from "lucide-react";
 import { useAuth, logout } from "wasp/client/auth";
 import logo from "../../client/static/logo.webp";
@@ -107,6 +108,11 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                     href: "/app/bookings",
                     icon: ClipboardList,
                 },
+                {
+                    name: "Forms",
+                    href: "/app/forms",
+                    icon: FileText,
+                },
             ],
         },
         {
@@ -122,11 +128,6 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                     name: "Promos",
                     href: "/app/promos",
                     icon: Tag,
-                },
-                {
-                    name: "Reviews",
-                    href: "/app/reviews",
-                    icon: Star,
                 },
             ],
         },
@@ -192,7 +193,7 @@ const AppSidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                         </div>
                         {!isCollapsed && (
                             <span className="font-black text-sm tracking-tight uppercase truncate animate-in fade-in duration-300">
-                                MorphScheduling
+                                Morph Scheduling
                             </span>
                         )}
                     </WaspRouterLink>

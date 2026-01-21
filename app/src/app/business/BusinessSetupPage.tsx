@@ -269,6 +269,10 @@ export default function BusinessSetupPage() {
     const [overrideForm, setOverrideForm] = useState({ dates: [] as string[], isUnavailable: false, startTime: "09:00", endTime: "17:00" });
     const [selectedDates, setSelectedDates] = useState<Date[] | undefined>([]);
 
+    // Maximum Appointments State
+    const [maxAppointmentsMode, setMaxAppointmentsMode] = useState<string>("fully_booked");
+    const [maxAppointmentsPerDay, setMaxAppointmentsPerDay] = useState<number>(0);
+
     // Track initial state for dirty checking
     const [initialScheduleState, setInitialScheduleState] = useState<string>("");
 
@@ -287,6 +291,14 @@ export default function BusinessSetupPage() {
             setScheduleDays([]);
         }
     }, [schedule]);
+
+    // Load max appointments settings from user
+    useEffect(() => {
+        if (user) {
+            setMaxAppointmentsMode((user as any).maxAppointmentsMode || "fully_booked");
+            setMaxAppointmentsPerDay((user as any).maxAppointmentsPerDay || 0);
+        }
+    }, [user]);
 
     const isScheduleDirty = useMemo(() => {
         if (!initialScheduleState) return false;
@@ -443,6 +455,13 @@ export default function BusinessSetupPage() {
                 scheduleId: schedule.id,
                 days: scheduleDays
             });
+
+            // Also save max appointments settings to user profile
+            await updateUserProfileAction({
+                maxAppointmentsMode,
+                maxAppointmentsPerDay
+            });
+
             await refetchSchedule();
             addToast("Availability saved!", 'success');
         } catch (error: any) {
@@ -1013,13 +1032,18 @@ export default function BusinessSetupPage() {
                                                 key={template}
                                                 onClick={() => setStyleForm({ ...TEMPLATE_DEFAULTS[template], template })}
                                                 className={cn(
-                                                    "p-3 border-2 font-bold uppercase text-[10px] transition-all text-center rounded hover:scale-[1.02]",
+                                                    "relative p-3 border-2 font-bold uppercase text-[10px] transition-all text-center rounded hover:scale-[1.02]",
                                                     styleForm.template === template
                                                         ? "border-black bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]"
                                                         : "border-gray-200 text-gray-500 hover:border-black hover:text-black"
                                                 )}
                                             >
                                                 {template.replace('_', ' ')}
+                                                {template === 'poster_warm' && (
+                                                    <span className="absolute -top-1 -right-1 bg-yellow-400 text-black text-[7px] font-black uppercase px-1.5 py-0.5 rounded border border-black">
+                                                        Popular
+                                                    </span>
+                                                )}
                                             </button>
                                         ))}
                                     </div>

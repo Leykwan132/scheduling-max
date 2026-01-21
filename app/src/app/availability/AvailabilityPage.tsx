@@ -52,6 +52,10 @@ export default function AvailabilityPage() {
     const [editingOverrideId, setEditingOverrideId] = useState<string | null>(null);
     const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
 
+    // Maximum Appointments State
+    const [maxAppointmentsMode, setMaxAppointmentsMode] = useState<string>("fully_booked");
+    const [maxAppointmentsPerDay, setMaxAppointmentsPerDay] = useState<number>(0);
+
     useEffect(() => {
         if (schedule) {
             setScheduleDays(schedule.days || []);
@@ -65,6 +69,11 @@ export default function AvailabilityPage() {
     useEffect(() => {
         if (user?.timezone) {
             setTimezone(user.timezone);
+        }
+        // Also load max appointments settings
+        if (user) {
+            setMaxAppointmentsMode((user as any).maxAppointmentsMode || "fully_booked");
+            setMaxAppointmentsPerDay((user as any).maxAppointmentsPerDay || 0);
         }
     }, [user]);
 
@@ -91,6 +100,13 @@ export default function AvailabilityPage() {
                 scheduleId: schedule.id,
                 days: scheduleDays
             });
+
+            // Also save max appointments settings to user profile
+            await updateUserProfileAction({
+                maxAppointmentsMode,
+                maxAppointmentsPerDay
+            });
+
             await refetchSchedule();
             addToast("Availability saved!", 'success');
         } catch (error: any) {
@@ -354,6 +370,68 @@ export default function AvailabilityPage() {
                                 </div>
                             );
                         })}
+                    </div>
+                </div>
+
+                {/* Maximum Appointments Section */}
+                <div className="bg-background border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] mb-6">
+                    <h2 className="text-lg font-black uppercase flex items-center gap-2 mb-4">
+                        <Clock className="size-5" />
+                        Maximum Appointments
+                    </h2>
+                    <p className="text-xs text-muted-foreground font-medium mb-4">
+                        Control how many appointments you accept per day.
+                    </p>
+
+                    <div className="space-y-4">
+                        <label className="flex items-start gap-3 cursor-pointer p-3 border-2 border-black/20 hover:border-black transition-colors">
+                            <input
+                                type="radio"
+                                name="maxAppointmentsMode"
+                                value="fully_booked"
+                                checked={maxAppointmentsMode === "fully_booked"}
+                                onChange={() => setMaxAppointmentsMode("fully_booked")}
+                                className="w-4 h-4 mt-0.5 accent-black"
+                            />
+                            <div>
+                                <span className="font-bold text-sm">Accept appointments until fully booked</span>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Customers can book any available time slot until all slots are filled.
+                                </p>
+                            </div>
+                        </label>
+
+                        <label className="flex items-start gap-3 cursor-pointer p-3 border-2 border-black/20 hover:border-black transition-colors">
+                            <input
+                                type="radio"
+                                name="maxAppointmentsMode"
+                                value="max_per_day"
+                                checked={maxAppointmentsMode === "max_per_day"}
+                                onChange={() => setMaxAppointmentsMode("max_per_day")}
+                                className="w-4 h-4 mt-0.5 accent-black"
+                            />
+                            <div className="flex-1">
+                                <span className="font-bold text-sm">Accept a maximum number of appointments per day</span>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Limit the total number of bookings per day regardless of available time slots.
+                                </p>
+
+                                {maxAppointmentsMode === "max_per_day" && (
+                                    <div className="mt-3 flex items-center gap-3">
+                                        <span className="text-sm font-bold">Max per day:</span>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="100"
+                                            value={maxAppointmentsPerDay || ""}
+                                            onChange={(e) => setMaxAppointmentsPerDay(parseInt(e.target.value) || 0)}
+                                            className="w-20 px-3 py-2 border-2 border-black font-bold text-center"
+                                            placeholder="5"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </label>
                     </div>
                 </div>
 

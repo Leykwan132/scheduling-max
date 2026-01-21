@@ -34,8 +34,13 @@ model User {
   closingTime  String? // e.g., "17:00"
   workDays     String? // Comma-separated days: "mon,tue,wed,thu,fri"
   timezone     String? @default("UTC")
+  location     String? // Business/service location address or "Remote"
   bufferBefore Int?    @default(0) // Buffer time in minutes before appointments
   bufferAfter  Int?    @default(0) // Buffer time in minutes after appointments
+
+  // Maximum Appointments Settings
+  maxAppointmentsMode   String? @default("fully_booked") // "fully_booked" or "max_per_day"
+  maxAppointmentsPerDay Int?    @default(0) // 0 means unlimited, only used when mode is "max_per_day"
 
   contactFormMessages ContactFormMessage[]
   files               File[]               @relation("UserFiles")
@@ -54,16 +59,20 @@ model User {
   publicEmail String?
   publicPhone String?
 
-  customers Customer[]
-  services  Service[]
-  bookings  Booking[]  @relation("StaffBookings")
-  schedules Schedule[]
-  reviews   Review[]   @relation("StaffReviews")
+  customers   Customer[]
+  services    Service[]
+  bookings    Booking[]    @relation("StaffBookings")
+  schedules   Schedule[]
+  reviews     Review[]     @relation("StaffReviews")
+  intakeForms IntakeForm[] // Custom intake forms created by user
 
   googRefreshToken String?
 
   // Page Style Customization (JSON)
   styleConfig String? // JSON: template, background, button, font, profile settings
+
+  // Onboarding
+  onboardingCompleted Boolean @default(false)
 }
 
 model File {
@@ -213,6 +222,7 @@ model Service {
   description String?
   duration    Int // in minutes
   price       Float
+  location    String? // Service location - can be user's default location or custom
   isActive    Boolean @default(true)
 
   categoryId String?
@@ -232,6 +242,7 @@ model ServiceCategory {
   name String
 
   services Service[]
+  forms    IntakeForm[] @relation("FormCategories") // Linked intake forms
 
   @@unique([businessId, name])
 }
@@ -281,7 +292,11 @@ model Booking {
 
   googleCalendarEventId String? // ID of the synced Google Calendar event
 
-  review Review?
+  reminderPreference String  @default("email") // "sms", "email", or "both"
+  reminderSent       Boolean @default(false) // Track if 1-hour reminder was sent
+
+  review       Review?
+  formResponse FormResponse? // Intake form response if applicable
 }
 
 model Schedule {
@@ -343,4 +358,51 @@ model Review {
 
   userId String?
   user   User?   @relation("StaffReviews", fields: [userId], references: [id]) // Staff member being reviewed
+}
+
+// ============================================
+// Intake Forms - Custom questionnaires
+// ============================================
+
+model IntakeForm {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  name        String?
+  description String?
+  isInternal  Boolean @default(false) // If true, don't show to clients
+
+  questions  FormQuestion[]
+  categories ServiceCategory[] @relation("FormCategories")
+  responses  FormResponse[]
+}
+
+model FormQuestion {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  form   IntakeForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId String
+
+  type       String // "text", "checkbox", "checkbox_list", "yes_no", "dropdown"
+  label      String
+  options    String? // JSON array for checkbox_list/dropdown options
+  isRequired Boolean @default(false)
+  order      Int     @default(0)
+}
+
+model FormResponse {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  form      IntakeForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId    String
+  booking   Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingId String     @unique
+
+  answers String // JSON object: { questionId: answer }
 }

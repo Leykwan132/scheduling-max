@@ -1,21 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { useQuery, useAction, getUserBySlug, getAvailableSlots, createPublicBooking, reschedulePublicBooking, cancelPublicBooking } from "wasp/client/operations";
-import { Phone, Clock, DollarSign, ArrowLeft, Calendar as CalendarIcon, X, CheckCircle, Instagram, Facebook, Globe, Mail, MapPin, ArrowRight, Loader2, Download, AlertTriangle } from "lucide-react";
+import { useQuery, useAction, getUserBySlug, getAvailableSlots, createPublicBooking, reschedulePublicBooking, cancelPublicBooking, getFormForCategory, saveFormResponse } from "wasp/client/operations";
+import { Phone, Clock, DollarSign, ArrowLeft, Calendar as CalendarIcon, X, CheckCircle, Instagram, Facebook, Globe, Mail, MapPin, ArrowRight, Loader2, Download, AlertTriangle, ChevronDown } from "lucide-react";
 import { format, startOfDay, addMinutes } from "date-fns";
 import { cn } from "../client/utils";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import { StyleConfig, parseStyleConfig, FONT_CSS, getButtonStyles, getContainerStyles } from "../shared/styleConfig";
 
-// Get visitor's timezone
-const getVisitorTimezone = (): string => {
-    try {
-        return Intl.DateTimeFormat().resolvedOptions().timeZone;
-    } catch {
-        return "UTC";
-    }
-};
+
 
 
 export default function BookingPage() {
@@ -29,7 +22,7 @@ export default function BookingPage() {
     const [selectedService, setSelectedService] = useState<any>(null);
     const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
     const [selectedTime, setSelectedTime] = useState<string | null>(null);
-    const [bookingStep, setBookingStep] = useState<'time' | 'details' | 'success'>('time');
+    const [bookingStep, setBookingStep] = useState<'time' | 'form' | 'details' | 'success'>('time');
 
     // New state for enhanced confirmation flow
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,14 +34,21 @@ export default function BookingPage() {
     const [isRescheduling, setIsRescheduling] = useState(false);
     const [isCancelling, setIsCancelling] = useState(false);
 
-    // Auto-detect visitor's timezone
-    const visitorTimezone = useMemo(() => getVisitorTimezone(), []);
+    // Intake form state
+    const [formAnswers, setFormAnswers] = useState<Record<string, any>>({});
+    const [formToast, setFormToast] = useState<string | null>(null);
+    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+
+    // Use business timezone for booking times (defaulting to UTC if not set)
+    const businessTimezone = useMemo(() => user?.timezone || 'UTC', [user?.timezone]);
 
     const [formData, setFormData] = useState({
         name: "",
+        countryCode: "+1",
         phone: "",
         email: "",
-        notes: ""
+        notes: "",
+        reminderPreference: "email" as "email" | "sms" | "both"
     });
 
     const { data: availableSlots, isLoading: isLoadingSlots, refetch: refetchSlots } = useQuery(
@@ -56,7 +56,7 @@ export default function BookingPage() {
         {
             slug: slug || "",
             date: format(selectedDate, 'yyyy-MM-dd'),
-            visitorTimezone,
+            visitorTimezone: businessTimezone, // Use business timezone for slot calculation
             serviceId: selectedService?.id
         },
         {
@@ -65,6 +65,13 @@ export default function BookingPage() {
             refetchOnMount: 'always',
             staleTime: 0,
         }
+    );
+
+    // Query for intake form based on selected service's category
+    const { data: intakeForm } = useQuery(
+        getFormForCategory,
+        { categoryId: selectedService?.categoryId || "" },
+        { enabled: !!selectedService?.categoryId }
     );
 
     // Parse style config from user - must be before early returns
@@ -109,8 +116,27 @@ export default function BookingPage() {
 
     const handleConfirmTime = () => {
         if (selectedTime) {
-            setBookingStep('details');
+            // If there's an intake form for this service's category, show form step
+            if (intakeForm && intakeForm.questions?.length > 0) {
+                setFormAnswers({}); // Reset form answers
+                setBookingStep('form');
+            } else {
+                setBookingStep('details');
+            }
         }
+    };
+
+    const handleConfirmForm = () => {
+        // Validate required questions
+        const missingRequired = intakeForm?.questions?.filter(
+            (q: any) => q.isRequired && !formAnswers[q.id]
+        );
+        if (missingRequired?.length > 0) {
+            setFormToast("Please fill in all required fields");
+            setTimeout(() => setFormToast(null), 3000);
+            return;
+        }
+        setBookingStep('details');
     };
 
     const handleFinalizeBooking = async (e: React.FormEvent) => {
@@ -123,10 +149,11 @@ export default function BookingPage() {
                 date: format(selectedDate, 'yyyy-MM-dd'),
                 time: selectedTime!,
                 clientName: formData.name,
-                clientPhone: formData.phone,
+                clientPhone: `${formData.countryCode}${formData.phone.replace(/\D/g, '')}`,
                 clientEmail: formData.email,
                 notes: formData.notes,
-                visitorTimezone
+                visitorTimezone: businessTimezone, // Use business timezone
+                reminderPreference: formData.reminderPreference
             });
             // Redirect to dedicated appointment page
             window.location.href = `/appointment/${booking.id}`;
@@ -193,7 +220,7 @@ END:VCALENDAR`;
                 bookingId: createdBooking.id,
                 newDate: format(rescheduleDate, 'yyyy-MM-dd'),
                 newTime: rescheduleTime,
-                visitorTimezone
+                visitorTimezone: businessTimezone // Use business timezone
             });
             // Update local state
             setSelectedDate(rescheduleDate);
@@ -737,8 +764,8 @@ END:VCALENDAR`;
                                             <div className="flex items-center justify-between mb-4">
                                                 <label className="text-xs font-black uppercase tracking-widest text-black underline decoration-primary decoration-4 underline-offset-4">Select Time</label>
                                                 <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 border border-black/20 rounded text-[10px] font-bold text-gray-600">
-                                                    <MapPin className="size-3" />
-                                                    <span>{visitorTimezone.replace(/_/g, ' ')}</span>
+                                                    <Clock className="size-3" />
+                                                    <span>{businessTimezone.replace(/_/g, ' ')}</span>
                                                 </div>
                                             </div>
                                             {isLoadingSlots ? (
@@ -788,6 +815,197 @@ END:VCALENDAR`;
                                     </div>
                                 )}
 
+                                {bookingStep === 'form' && intakeForm && (
+                                    <div className="space-y-6">
+                                        {intakeForm.name && (
+                                            <div>
+                                                <h3 className="text-lg font-black uppercase" style={{ color: styleConfig.profile.titleColor }}>{intakeForm.name}</h3>
+                                                {intakeForm.description && (
+                                                    <p className="text-sm mt-1 opacity-70" style={{ color: styleConfig.font.color }}>{intakeForm.description}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                        <div className="space-y-5">
+                                            {intakeForm.questions?.map((question: any) => (
+                                                <div key={question.id} className="space-y-2">
+                                                    <label className="text-[10px] font-black uppercase tracking-widest block px-1 opacity-60" style={{ color: styleConfig.font.color }}>
+                                                        {question.label} {question.isRequired && <span className="text-red-500">*</span>}
+                                                    </label>
+
+                                                    {question.type === 'text' && (
+                                                        <input
+                                                            type="text"
+                                                            required={question.isRequired}
+                                                            className="w-full px-4 py-3 border-2 rounded-xl font-bold focus:outline-none transition-all bg-transparent"
+                                                            style={{ borderColor: `${styleConfig.font.color}40`, color: styleConfig.font.color }}
+                                                            value={formAnswers[question.id] || ''}
+                                                            onChange={e => setFormAnswers({ ...formAnswers, [question.id]: e.target.value })}
+                                                        />
+                                                    )}
+
+                                                    {question.type === 'dropdown' && (
+                                                        <div className="relative">
+                                                            {/* Backdrop to close on outside click */}
+                                                            {openDropdownId === question.id && (
+                                                                <div
+                                                                    className="fixed inset-0 z-10"
+                                                                    onClick={() => setOpenDropdownId(null)}
+                                                                />
+                                                            )}
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setOpenDropdownId(openDropdownId === question.id ? null : question.id)}
+                                                                className={cn(
+                                                                    "relative z-20 w-full px-4 py-3 border-2 rounded-xl font-bold flex items-center justify-between transition-all bg-white",
+                                                                    openDropdownId === question.id ? "shadow-md" : ""
+                                                                )}
+                                                                style={{
+                                                                    borderColor: openDropdownId === question.id ? styleConfig.font.color : `${styleConfig.font.color}40`,
+                                                                    color: formAnswers[question.id] ? styleConfig.font.color : `${styleConfig.font.color}60`
+                                                                }}
+                                                            >
+                                                                <span className={cn(!formAnswers[question.id] && "uppercase tracking-wider text-sm")}>
+                                                                    {formAnswers[question.id] || "Select an option"}
+                                                                </span>
+                                                                <ChevronDown
+                                                                    className={cn("w-5 h-5 transition-transform duration-200", openDropdownId === question.id && "rotate-180")}
+                                                                    style={{ color: styleConfig.font.color }}
+                                                                />
+                                                            </button>
+
+                                                            {openDropdownId === question.id && (
+                                                                <div
+                                                                    className="absolute z-30 w-full mt-2 bg-white border-2 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top"
+                                                                    style={{ borderColor: styleConfig.font.color }}
+                                                                >
+                                                                    <div className="max-h-60 overflow-y-auto">
+                                                                        {question.options?.split(',').map((opt: string) => (
+                                                                            <button
+                                                                                key={opt.trim()}
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setFormAnswers({ ...formAnswers, [question.id]: opt.trim() });
+                                                                                    setOpenDropdownId(null);
+                                                                                }}
+                                                                                className="w-full text-left px-4 py-3 font-medium transition-colors hover:bg-black/5 flex items-center justify-between group border-b last:border-0 border-black/5"
+                                                                                style={{ color: styleConfig.font.color }}
+                                                                            >
+                                                                                {opt.trim()}
+                                                                                {formAnswers[question.id] === opt.trim() && (
+                                                                                    <CheckCircle className="w-4 h-4" style={{ color: styleConfig.button.color }} />
+                                                                                )}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {question.type === 'checkbox' && (
+                                                        <div className="flex gap-3">
+                                                            {['Yes', 'No'].map(option => (
+                                                                <button
+                                                                    key={option}
+                                                                    type="button"
+                                                                    onClick={() => setFormAnswers({ ...formAnswers, [question.id]: option === 'Yes' })}
+                                                                    className={cn(
+                                                                        "flex-1 py-3 px-4 border-2 font-bold text-sm uppercase tracking-wider transition-all",
+                                                                        (formAnswers[question.id] === true && option === 'Yes') || (formAnswers[question.id] === false && option === 'No')
+                                                                            ? "shadow-md scale-[1.02]"
+                                                                            : "hover:opacity-80"
+                                                                    )}
+                                                                    style={{
+                                                                        ...((formAnswers[question.id] === true && option === 'Yes') || (formAnswers[question.id] === false && option === 'No')
+                                                                            ? getButtonStyles(styleConfig.button)
+                                                                            : {
+                                                                                backgroundColor: 'transparent',
+                                                                                color: styleConfig.font.color,
+                                                                                borderColor: `${styleConfig.font.color}40`,
+                                                                                borderRadius: styleConfig.button.shape === 'pill' ? '9999px' : styleConfig.button.shape === 'rounded' ? '8px' : '0px',
+                                                                            }
+                                                                        )
+                                                                    }}
+                                                                >
+                                                                    {option}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {question.type === 'checkbox_list' && (
+                                                        <div className="space-y-2">
+                                                            {question.options?.split(',').map((opt: string) => (
+                                                                <label key={opt.trim()} className="flex items-center gap-3 cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={(formAnswers[question.id] || []).includes(opt.trim())}
+                                                                        onChange={e => {
+                                                                            const current = formAnswers[question.id] || [];
+                                                                            const updated = e.target.checked
+                                                                                ? [...current, opt.trim()]
+                                                                                : current.filter((v: string) => v !== opt.trim());
+                                                                            setFormAnswers({ ...formAnswers, [question.id]: updated });
+                                                                        }}
+                                                                        className="w-5 h-5 border-2 rounded accent-primary"
+                                                                        style={{ borderColor: `${styleConfig.font.color}40` }}
+                                                                    />
+                                                                    <span className="font-medium" style={{ color: styleConfig.font.color }}>{opt.trim()}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {question.type === 'yes_no' && (
+                                                        <div className="flex gap-3">
+                                                            {['Yes', 'No'].map(option => (
+                                                                <button
+                                                                    key={option}
+                                                                    type="button"
+                                                                    onClick={() => setFormAnswers({ ...formAnswers, [question.id]: option })}
+                                                                    className={cn(
+                                                                        "flex-1 py-3 px-4 border-2 font-bold text-sm uppercase tracking-wider transition-all",
+                                                                        formAnswers[question.id] === option ? "shadow-md scale-[1.02]" : "hover:opacity-80"
+                                                                    )}
+                                                                    style={{
+                                                                        ...(formAnswers[question.id] === option
+                                                                            ? getButtonStyles(styleConfig.button)
+                                                                            : {
+                                                                                backgroundColor: 'transparent',
+                                                                                color: styleConfig.font.color,
+                                                                                borderColor: `${styleConfig.font.color}40`,
+                                                                                borderRadius: styleConfig.button.shape === 'pill' ? '9999px' : styleConfig.button.shape === 'rounded' ? '8px' : '0px',
+                                                                            }
+                                                                        )
+                                                                    }}
+                                                                >
+                                                                    {option}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Form Toast */}
+                                        {formToast && (
+                                            <div
+                                                className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-6 py-4 rounded-xl shadow-2xl border-2 flex items-center gap-3 animate-in slide-in-from-bottom-4 duration-300"
+                                                style={{
+                                                    backgroundColor: '#FEE2E2',
+                                                    borderColor: '#EF4444',
+                                                    color: '#991B1B'
+                                                }}
+                                            >
+                                                <AlertTriangle className="w-5 h-5 text-red-600" />
+                                                <span className="font-bold text-sm">{formToast}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {bookingStep === 'details' && (
                                     <form id="booking-form" onSubmit={handleFinalizeBooking} className="space-y-6">
                                         <div className="p-4 border-2 flex items-center justify-between mb-8" style={{ ...getContainerStyles(styleConfig), boxShadow: 'none' }}>
@@ -826,23 +1044,60 @@ END:VCALENDAR`;
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div>
                                                     <label className="text-[10px] font-black uppercase tracking-widest mb-1.5 block px-1 opacity-60" style={{ color: styleConfig.font.color }}>Phone</label>
-                                                    <input
-                                                        required
-                                                        type="tel"
-                                                        className="w-full px-4 py-3 border-2 rounded-xl font-bold focus:outline-none transition-all bg-transparent"
-                                                        style={{ borderColor: `${styleConfig.font.color}40`, color: styleConfig.font.color }}
-                                                        placeholder="PHONE NUMBER"
-                                                        value={formData.phone}
-                                                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                                    />
+                                                    <div className="flex gap-2 min-w-0">
+                                                        <select
+                                                            value={formData.countryCode}
+                                                            onChange={e => {
+                                                                const newCode = e.target.value;
+                                                                setFormData(prev => ({
+                                                                    ...prev,
+                                                                    countryCode: newCode,
+                                                                    reminderPreference: newCode !== '+1' ? 'email' : prev.reminderPreference
+                                                                }));
+                                                            }}
+                                                            className="px-2 py-3 border-2 rounded-xl font-bold focus:outline-none transition-all bg-transparent text-sm shrink-0"
+                                                            style={{ borderColor: `${styleConfig.font.color}40`, color: styleConfig.font.color }}
+                                                        >
+                                                            <option value="+1">🇺🇸 +1</option>
+                                                            <option value="+44">🇬🇧 +44</option>
+                                                            <option value="+60">🇲🇾 +60</option>
+                                                            <option value="+65">🇸🇬 +65</option>
+                                                            <option value="+61">🇦🇺 +61</option>
+                                                            <option value="+91">🇮🇳 +91</option>
+                                                            <option value="+86">🇨🇳 +86</option>
+                                                            <option value="+81">🇯🇵 +81</option>
+                                                            <option value="+82">🇰🇷 +82</option>
+                                                            <option value="+49">🇩🇪 +49</option>
+                                                            <option value="+33">🇫🇷 +33</option>
+                                                            <option value="+39">🇮🇹 +39</option>
+                                                            <option value="+34">🇪🇸 +34</option>
+                                                            <option value="+55">🇧🇷 +55</option>
+                                                            <option value="+52">🇲🇽 +52</option>
+                                                            <option value="+63">🇵🇭 +63</option>
+                                                            <option value="+66">🇹🇭 +66</option>
+                                                            <option value="+62">🇮🇩 +62</option>
+                                                            <option value="+84">🇻🇳 +84</option>
+                                                            <option value="+971">🇦🇪 +971</option>
+                                                        </select>
+                                                        <input
+                                                            required
+                                                            type="tel"
+                                                            className="flex-1 min-w-0 px-4 py-3 border-2 rounded-xl font-bold focus:outline-none transition-all bg-transparent"
+                                                            style={{ borderColor: `${styleConfig.font.color}40`, color: styleConfig.font.color }}
+                                                            placeholder="PHONE NUMBER"
+                                                            value={formData.phone}
+                                                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                                        />
+                                                    </div>
                                                 </div>
                                                 <div>
                                                     <label className="text-[10px] font-black uppercase tracking-widest mb-1.5 block px-1 opacity-60" style={{ color: styleConfig.font.color }}>Email</label>
                                                     <input
+                                                        required
                                                         type="email"
                                                         className="w-full px-4 py-3 border-2 rounded-xl font-bold focus:outline-none transition-all bg-transparent"
                                                         style={{ borderColor: `${styleConfig.font.color}40`, color: styleConfig.font.color }}
-                                                        placeholder="EMAIL (OPTIONAL)"
+                                                        placeholder="EMAIL"
                                                         value={formData.email}
                                                         onChange={e => setFormData({ ...formData, email: e.target.value })}
                                                     />
@@ -859,6 +1114,8 @@ END:VCALENDAR`;
                                                     onChange={e => setFormData({ ...formData, notes: e.target.value })}
                                                 />
                                             </div>
+
+
                                         </div>
                                     </form>
                                 )}
@@ -871,7 +1128,7 @@ END:VCALENDAR`;
                                                 setSelectedService(null);
                                                 setBookingStep('time');
                                                 setCreatedBooking(null);
-                                                setFormData({ name: '', phone: '', email: '', notes: '' });
+                                                setFormData({ name: '', countryCode: '+1', phone: '', email: '', notes: '', reminderPreference: 'email' });
                                             }}
                                             className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider transition-colors hover:opacity-70"
                                             style={{ color: styleConfig.font.color }}
@@ -919,7 +1176,7 @@ END:VCALENDAR`;
                                                         const endMinutes = h * 60 + m + (selectedService?.duration || 30);
                                                         return `${Math.floor(endMinutes / 60).toString().padStart(2, '0')}:${(endMinutes % 60).toString().padStart(2, '0')}`;
                                                     })()
-                                                )} {visitorTimezone.replace(/_/g, ' ')}
+                                                )} ({businessTimezone.replace(/_/g, ' ')})
                                             </p>
                                         </div>
 
@@ -993,6 +1250,31 @@ END:VCALENDAR`;
                                         >
                                             Next step
                                         </button>
+                                    )}
+                                    {bookingStep === 'form' && (
+                                        <div className="flex gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => setBookingStep('time')}
+                                                className="flex-1 py-4 font-black uppercase tracking-widest transition-all border-2"
+                                                style={{
+                                                    backgroundColor: 'transparent',
+                                                    color: styleConfig.font.color,
+                                                    borderColor: `${styleConfig.font.color}40`,
+                                                    borderRadius: styleConfig.button.shape === 'pill' ? '9999px' : styleConfig.button.shape === 'rounded' ? '8px' : '0px',
+                                                }}
+                                            >
+                                                Back
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleConfirmForm}
+                                                className="flex-1 py-4 font-black uppercase tracking-widest transition-all"
+                                                style={getButtonStyles(styleConfig.button)}
+                                            >
+                                                Continue
+                                            </button>
+                                        </div>
                                     )}
                                     {bookingStep === 'details' && (
                                         <button
@@ -1108,10 +1390,11 @@ END:VCALENDAR`;
                                     slug={slug || ''}
                                     date={format(rescheduleDate, 'yyyy-MM-dd')}
                                     serviceId={selectedService?.id}
-                                    visitorTimezone={visitorTimezone}
+                                    visitorTimezone={businessTimezone}
                                     selectedTime={rescheduleTime}
                                     onSelectTime={setRescheduleTime}
                                     styleConfig={styleConfig}
+                                    businessTimezone={businessTimezone}
                                 />
                             </div>
                         </div>
@@ -1238,7 +1521,8 @@ function RescheduleTimeSlots({
     visitorTimezone,
     selectedTime,
     onSelectTime,
-    styleConfig
+    styleConfig,
+    businessTimezone
 }: {
     slug: string;
     date: string;
@@ -1247,6 +1531,7 @@ function RescheduleTimeSlots({
     selectedTime: string | null;
     onSelectTime: (time: string) => void;
     styleConfig: StyleConfig;
+    businessTimezone: string;
 }) {
     const { data: availableSlots, isLoading } = useQuery(
         getAvailableSlots,
@@ -1279,30 +1564,37 @@ function RescheduleTimeSlots({
     }
 
     return (
-        <div className="grid grid-cols-3 gap-3">
-            {availableSlots.map((time) => (
-                <button
-                    key={time}
-                    onClick={() => onSelectTime(time)}
-                    className={cn(
-                        "py-4 font-black text-xl tracking-tighter transition-all flex items-center justify-center",
-                        selectedTime === time ? "shadow-md scale-[1.02]" : "hover:opacity-80 border-2"
-                    )}
-                    style={{
-                        ...(selectedTime === time
-                            ? getButtonStyles(styleConfig.button)
-                            : {
-                                backgroundColor: 'transparent',
-                                color: styleConfig.font.color,
-                                borderColor: `${styleConfig.font.color}30`,
-                                borderRadius: styleConfig.button.shape === 'pill' ? '9999px' : styleConfig.button.shape === 'rounded' ? '8px' : '0px',
-                            }
-                        )
-                    }}
-                >
-                    {formatTimeWithAMPM(time)}
-                </button>
-            ))}
+        <div className="space-y-3">
+            {/* Timezone indicator */}
+            <div className="flex items-center justify-end gap-1.5 px-2 py-1 bg-gray-100 border border-black/20 rounded text-[10px] font-bold text-gray-600 w-fit ml-auto">
+                <Clock className="size-3" />
+                <span>{businessTimezone.replace(/_/g, ' ')}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+                {availableSlots.map((time) => (
+                    <button
+                        key={time}
+                        onClick={() => onSelectTime(time)}
+                        className={cn(
+                            "py-4 font-black text-xl tracking-tighter transition-all flex items-center justify-center",
+                            selectedTime === time ? "shadow-md scale-[1.02]" : "hover:opacity-80 border-2"
+                        )}
+                        style={{
+                            ...(selectedTime === time
+                                ? getButtonStyles(styleConfig.button)
+                                : {
+                                    backgroundColor: 'transparent',
+                                    color: styleConfig.font.color,
+                                    borderColor: `${styleConfig.font.color}30`,
+                                    borderRadius: styleConfig.button.shape === 'pill' ? '9999px' : styleConfig.button.shape === 'rounded' ? '8px' : '0px',
+                                }
+                            )
+                        }}
+                    >
+                        {formatTimeWithAMPM(time)}
+                    </button>
+                ))}
+            </div>
         </div>
     );
 }

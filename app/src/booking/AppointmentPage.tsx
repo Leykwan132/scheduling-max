@@ -8,15 +8,6 @@ import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import { StyleConfig, parseStyleConfig, FONT_CSS, getButtonStyles, getContainerStyles } from "../shared/styleConfig";
 
-// Get visitor's timezone
-const getVisitorTimezone = (): string => {
-    try {
-        return Intl.DateTimeFormat().resolvedOptions().timeZone;
-    } catch {
-        return "UTC";
-    }
-};
-
 // Format time with AM/PM
 function formatTimeWithAMPM(time: string) {
     const [hours, minutes] = time.split(':').map(Number);
@@ -38,7 +29,8 @@ export default function AppointmentPage() {
     const navigate = useNavigate();
     const { data: booking, isLoading, error, refetch } = useQuery(getBookingById, { bookingId: bookingId || "" });
 
-    const visitorTimezone = useMemo(() => getVisitorTimezone(), []);
+    // Use business/staff timezone for display (defaulting to UTC if not set)
+    const businessTimezone = useMemo(() => (booking?.staff as any)?.timezone || 'UTC', [booking?.staff]);
 
     // Actions
     const rescheduleBookingAction = useAction(reschedulePublicBooking);
@@ -66,17 +58,35 @@ export default function AppointmentPage() {
     // Get appointment URL
     const appointmentUrl = `${getBaseUrl()}/appointment/${bookingId}`;
 
-    // Get booking time as string
+    // Get booking time as string in business timezone
     const getBookingTimeString = () => {
         if (!booking?.startTimeUtc) return '';
         const date = new Date(booking.startTimeUtc);
-        return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+        // Format in business timezone and extract time
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: businessTimezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        return formatter.format(date).replace(/^(\d{1,2}):(\d{2})$/, (_, h, m) =>
+            `${h.padStart(2, '0')}:${m}`
+        );
     };
 
     const getBookingEndTimeString = () => {
         if (!booking?.endTimeUtc) return '';
         const date = new Date(booking.endTimeUtc);
-        return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+        // Format in business timezone and extract time
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: businessTimezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        return formatter.format(date).replace(/^(\d{1,2}):(\d{2})$/, (_, h, m) =>
+            `${h.padStart(2, '0')}:${m}`
+        );
     };
 
     // Calendar link generators
@@ -86,7 +96,7 @@ export default function AppointmentPage() {
         const endDate = new Date(booking.endTimeUtc);
 
         const formatForGoogle = (date: Date) => date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-        const title = encodeURIComponent(`${service.name} with ${displayName}`);
+        const title = encodeURIComponent(`${service.name} with ${business?.name}`);
         const details = encodeURIComponent(`Appointment booked via Morph Scheduling.\n\nService: ${service.name}\nDuration: ${service.duration} min\nPrice: $${service.price.toFixed(2)}\n\nView or manage your appointment:\n${appointmentUrl}`);
 
         return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${formatForGoogle(startDate)}/${formatForGoogle(endDate)}&details=${details}`;
@@ -108,7 +118,7 @@ UID:${uid}
 DTSTAMP:${formatForICal(new Date())}
 DTSTART:${formatForICal(startDate)}
 DTEND:${formatForICal(endDate)}
-SUMMARY:${service.name} with ${displayName}
+SUMMARY:${service.name} with ${business?.name || displayName}
 DESCRIPTION:Service: ${service.name}\\nDuration: ${service.duration} min\\nPrice: $${service.price.toFixed(2)}\\n\\nView or manage: ${appointmentUrl}
 URL:${appointmentUrl}
 END:VEVENT
@@ -132,7 +142,7 @@ END:VCALENDAR`;
                 bookingId: booking.id,
                 newDate: format(rescheduleDate, 'yyyy-MM-dd'),
                 newTime: rescheduleTime,
-                visitorTimezone
+                visitorTimezone: businessTimezone // Use business timezone
             });
             setShowRescheduleModal(false);
             setRescheduleTime(null);
@@ -267,9 +277,9 @@ END:VCALENDAR`;
                                 </div>
                             )}
                             <div>
-                                <p className="font-bold text-lg" style={{ color: styleConfig.font.color }}>{displayName}</p>
+                                <p className="font-bold text-lg" style={{ color: styleConfig.font.color }}>{business.name}</p>
                                 {business?.name && business.name !== displayName && (
-                                    <p className="text-sm opacity-70" style={{ color: styleConfig.font.color }}>{business.name}</p>
+                                    <p className="text-sm opacity-70" style={{ color: styleConfig.font.color }}>{business.phone}</p>
                                 )}
                             </div>
                         </div>
@@ -294,7 +304,7 @@ END:VCALENDAR`;
                             <div className="flex items-center gap-2 mt-1 text-sm opacity-70" style={{ color: styleConfig.font.color }}>
                                 <Clock className="size-4" />
                                 <span>
-                                    {formatTimeWithAMPM(getBookingTimeString())} - {formatTimeWithAMPM(getBookingEndTimeString())} {visitorTimezone.replace(/_/g, ' ')}
+                                    {formatTimeWithAMPM(getBookingTimeString())} - {formatTimeWithAMPM(getBookingEndTimeString())} ({businessTimezone.replace(/_/g, ' ')})
                                 </span>
                             </div>
                             {service?.price && (
@@ -457,10 +467,11 @@ END:VCALENDAR`;
                                         slug={staff.slug}
                                         date={format(rescheduleDate, 'yyyy-MM-dd')}
                                         serviceId={service?.id}
-                                        visitorTimezone={visitorTimezone}
+                                        visitorTimezone={businessTimezone}
                                         selectedTime={rescheduleTime}
                                         onSelectTime={setRescheduleTime}
                                         styleConfig={styleConfig}
+                                        businessTimezone={businessTimezone}
                                     />
                                 </div>
                             )}
@@ -574,7 +585,8 @@ function RescheduleTimeSlots({
     visitorTimezone,
     selectedTime,
     onSelectTime,
-    styleConfig
+    styleConfig,
+    businessTimezone
 }: {
     slug: string;
     date: string;
@@ -583,6 +595,7 @@ function RescheduleTimeSlots({
     selectedTime: string | null;
     onSelectTime: (time: string) => void;
     styleConfig: StyleConfig;
+    businessTimezone: string;
 }) {
     const { data: availableSlots, isLoading } = useQuery(
         getAvailableSlots,
@@ -615,30 +628,37 @@ function RescheduleTimeSlots({
     }
 
     return (
-        <div className="grid grid-cols-3 gap-3">
-            {availableSlots.map((time) => (
-                <button
-                    key={time}
-                    onClick={() => onSelectTime(time)}
-                    className={cn(
-                        "py-4 font-black text-xl tracking-tighter transition-all flex items-center justify-center",
-                        selectedTime === time ? "shadow-md scale-[1.02]" : "hover:opacity-80 border-2"
-                    )}
-                    style={{
-                        ...(selectedTime === time
-                            ? getButtonStyles(styleConfig.button)
-                            : {
-                                backgroundColor: 'transparent',
-                                color: styleConfig.font.color,
-                                borderColor: `${styleConfig.font.color}30`,
-                                borderRadius: styleConfig.button.shape === 'pill' ? '9999px' : styleConfig.button.shape === 'rounded' ? '8px' : '0px',
-                            }
-                        )
-                    }}
-                >
-                    {formatTimeWithAMPM(time)}
-                </button>
-            ))}
+        <div className="space-y-3">
+            {/* Timezone indicator */}
+            <div className="flex items-center justify-end gap-1.5 px-2 py-1 bg-gray-100 border border-black/20 rounded text-[10px] font-bold text-gray-600 w-fit ml-auto">
+                <Clock className="size-3" />
+                <span>{businessTimezone.replace(/_/g, ' ')}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+                {availableSlots.map((time) => (
+                    <button
+                        key={time}
+                        onClick={() => onSelectTime(time)}
+                        className={cn(
+                            "py-4 font-black text-xl tracking-tighter transition-all flex items-center justify-center",
+                            selectedTime === time ? "shadow-md scale-[1.02]" : "hover:opacity-80 border-2"
+                        )}
+                        style={{
+                            ...(selectedTime === time
+                                ? getButtonStyles(styleConfig.button)
+                                : {
+                                    backgroundColor: 'transparent',
+                                    color: styleConfig.font.color,
+                                    borderColor: `${styleConfig.font.color}30`,
+                                    borderRadius: styleConfig.button.shape === 'pill' ? '9999px' : styleConfig.button.shape === 'rounded' ? '8px' : '0px',
+                                }
+                            )
+                        }}
+                    >
+                        {formatTimeWithAMPM(time)}
+                    </button>
+                ))}
+            </div>
         </div>
     );
 }
